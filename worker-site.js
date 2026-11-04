@@ -1,30 +1,35 @@
 /**
- * Stackd site Worker — serves the app from a private GitHub repo.
+ * Stackd site Worker — serves the app straight from GitHub.
  *
  * Why it works this way:
- *   The page is a single 147KB HTML file. Deploying it by writing it into a
- *   Worker script means the whole file has to be retyped into the deploy call
- *   every time, which is slow and risks silent corruption. Git pushes the file
- *   straight from disk instead, byte-exact. So the deployed Worker never
- *   changes — it just reads whatever is on the branch.
+ *   The page is a single 147KB HTML file. Writing it into a Worker script means
+ *   retyping the whole file into every deploy call — slow, and one wrong
+ *   character corrupts the app silently. Git sends the file from disk instead,
+ *   byte-exact, so the deployed Worker never has to change. It just reads
+ *   whatever is currently on the branch.
  *
- * Deploying a new version is therefore:  git push   (then optionally /__purge)
+ * Deploying a new version is therefore:  git push
  *
- * SETUP — Settings -> Variables and Secrets:
- *   GITHUB_TOKEN  (Secret)  fine-grained PAT, Contents: Read-only on the repo
- *   GITHUB_REPO   (Text)    e.g. gabemassaro/stackd-site
- *   GITHUB_BRANCH (Text)    main            (optional, defaults to main)
- *   PURGE_KEY     (Secret)  any random string, used by /__purge
+ * The repo is public, so no credential is involved. index.html is already
+ * handed verbatim to every visitor, and the only keys in it (Supabase URL and
+ * anon key) are public by design and guarded by row-level security. The Odds
+ * API key lives on the stackd-api Worker as a secret and is never in this file.
+ *
+ * CONFIG — Settings -> Variables and Secrets:
+ *   GITHUB_REPO   (Text)    devgmsoftware-code/stackd-site
+ *   GITHUB_BRANCH (Text)    main                (optional, defaults to main)
+ *   PURGE_KEY     (Secret)  random string, used by /__purge
  */
 
 const FILE = "index.html";
-const EDGE_TTL = 60; // seconds a built page is held at the edge
+const EDGE_TTL = 60;      // how long a fetched page is held at our edge
+const ORIGIN_BUCKET = 30; // seconds; granularity of the GitHub CDN cache-buster
 
-function htmlHeaders(extra = {}) {
+function pageHeaders(extra = {}) {
   return {
     "content-type": "text/html; charset=utf-8",
-    // Short max-age so a push goes live on its own within a minute, while
-    // still collapsing a burst of traffic into one origin read.
+    // Short, so a push goes live on its own, while still collapsing a burst of
+    // traffic into a single origin read.
     "cache-control": `public, max-age=${EDGE_TTL}`,
     "x-content-type-options": "nosniff",
     "referrer-policy": "strict-origin-when-cross-origin",
@@ -34,63 +39,68 @@ function htmlHeaders(extra = {}) {
 
 async function fetchPage(env) {
   const repo = env.GITHUB_REPO;
-  const branch = env.GITHUB_BRANCH || "main";
   if (!repo) throw new Error("GITHUB_REPO is not set on this Worker.");
-  if (!env.GITHUB_TOKEN) throw new Error("GITHUB_TOKEN secret is not set on this Worker.");
+  const branch = env.GITHUB_BRANCH || "main";
 
-  const api = `https://api.github.com/repos/${repo}/contents/${FILE}?ref=${encodeURIComponent(branch)}`;
-  const res = await fetch(api, {
-    headers: {
-      Authorization: `Bearer ${env.GITHUB_TOKEN}`,
-      // GitHub rejects API calls without one.
-      "User-Agent": "stackd-site-worker",
-      // Hands back the raw file instead of a base64 JSON envelope.
-      Accept: "application/vnd.github.raw",
-    },
+  /* raw.githubusercontent.com tells intermediaries to cache for five minutes,
+     which would delay a push by that long. A query string doesn't change what
+     GitHub serves but does change its cache key, so bucketing the clock into
+     30s slots gets a fresh copy without hammering the origin on every hit. */
+  const bust = Math.floor(Date.now() / (ORIGIN_BUCKET * 1000));
+  const url = `https://raw.githubusercontent.com/${repo}/${branch}/${FILE}?cb=${bust}`;
+
+  const res = await fetch(url, {
+    headers: { "User-Agent": "stackd-site-worker", Accept: "text/html" },
+    cf: { cacheTtl: 0, cacheEverything: false },
   });
 
   if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    throw new Error(`GitHub ${res.status} fetching ${repo}@${branch}/${FILE}: ${detail.slice(0, 300)}`);
+    throw new Error(`GitHub returned ${res.status} for ${repo}@${branch}/${FILE}`);
   }
-  return await res.text();
+
+  const html = await res.text();
+  /* A truncated or wrong-branch read would otherwise be cached and served as a
+     blank page, which is far harder to diagnose than a loud failure. */
+  if (!/<\/html>\s*$/i.test(html)) {
+    throw new Error(`Fetched page looks truncated (${html.length} bytes, no closing </html>).`);
+  }
+  return html;
 }
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const cache = caches.default;
-    // One cache entry for the whole site, keyed independently of the visitor's
-    // path so that deep links share the cached page.
+    // One entry for the whole site, keyed independently of the visitor's path
+    // so deep links share the cached page.
     const cacheKey = new Request(new URL("/__page", url).toString(), { method: "GET" });
 
-    // --- instant cache drop, for when 60s is too long to wait -------------
+    // --- instant cache drop, for when waiting 60s is too slow --------------
     if (url.pathname === "/__purge") {
       if (!env.PURGE_KEY || url.searchParams.get("key") !== env.PURGE_KEY) {
         return new Response("Forbidden", { status: 403 });
       }
-      const dropped = await cache.delete(cacheKey);
-      return Response.json({ purged: dropped });
+      const purged = await cache.delete(cacheKey);
+      return Response.json({ purged }, { headers: { "cache-control": "no-store" } });
     }
 
-    // --- health check, safe to visit, exposes no secret -------------------
+    // --- health check; safe to visit, exposes no secret -------------------
     if (url.pathname === "/__status") {
       let ok = true, error = null, bytes = null;
-      try {
-        bytes = (await fetchPage(env)).length;
-      } catch (e) {
-        ok = false; error = e.message;
-      }
+      try { bytes = (await fetchPage(env)).length; }
+      catch (e) { ok = false; error = e.message; }
       return Response.json({
         service: "stackd-site",
-        ok,
-        error,
+        ok, error,
         pageBytes: bytes,
         repo: env.GITHUB_REPO || null,
         branch: env.GITHUB_BRANCH || "main",
-        tokenConfigured: Boolean(env.GITHUB_TOKEN),
         purgeConfigured: Boolean(env.PURGE_KEY),
       }, { headers: { "cache-control": "no-store" } });
+    }
+
+    if (url.pathname === "/favicon.ico") {
+      return new Response(null, { status: 204, headers: { "cache-control": "public, max-age=86400" } });
     }
 
     if (request.method !== "GET" && request.method !== "HEAD") {
@@ -108,20 +118,18 @@ export default {
     try {
       html = await fetchPage(env);
     } catch (e) {
-      // Fail loudly but readably, and never cache a failure.
+      const safe = String(e.message).replace(/[<&]/g, c => ({ "<": "&lt;", "&": "&amp;" }[c]));
       return new Response(
         `<!doctype html><meta charset="utf-8"><title>Stackd — temporarily unavailable</title>` +
-        `<body style="font:16px system-ui;max-width:40rem;margin:4rem auto;padding:0 1rem">` +
+        `<body style="font:16px/1.5 system-ui;max-width:40rem;margin:4rem auto;padding:0 1rem">` +
         `<h1>Stackd is temporarily unavailable</h1>` +
-        `<p>The site could not be loaded from its source repository.</p>` +
-        `<pre style="white-space:pre-wrap;color:#a33">${e.message.replace(/[<&]/g, c => ({ "<": "&lt;", "&": "&amp;" }[c]))}</pre>`,
+        `<p>The page could not be loaded from its source repository.</p>` +
+        `<pre style="white-space:pre-wrap;color:#a33">${safe}</pre>`,
+        // Never cache a failure: it would pin the outage in place for the TTL.
         { status: 503, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
     }
 
-    // Store a clean copy for the next visitor, then answer this one.
-    const toCache = new Response(html, { status: 200, headers: htmlHeaders() });
-    ctx.waitUntil(cache.put(cacheKey, toCache.clone()));
-
-    return new Response(html, { status: 200, headers: htmlHeaders({ "x-stackd-cache": "MISS" }) });
+    ctx.waitUntil(cache.put(cacheKey, new Response(html, { status: 200, headers: pageHeaders() })));
+    return new Response(html, { status: 200, headers: pageHeaders({ "x-stackd-cache": "MISS" }) });
   },
 };

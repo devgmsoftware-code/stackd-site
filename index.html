@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="color-scheme" content="light" />
 <meta name="description" content="Stackd compares sportsbook odds across every book in your state, prices your parlay at each one, and tracks how your picks actually performed." />
-<title>Stackd V1.5.2 — every book, one board</title>
+<title>Stackd V1.5.3 — every book, one board</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23101A33'/%3E%3Crect x='7' y='20' width='9' height='4' rx='1.4' fill='%23FFFFFF' opacity='.45'/%3E%3Crect x='7' y='14' width='14' height='4' rx='1.4' fill='%23FFFFFF' opacity='.7'/%3E%3Crect x='7' y='8' width='19' height='4' rx='1.4' fill='%23FF5A45'/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1094,9 +1094,8 @@ function humanDuration(seconds){
    the useful summary is how many were already held versus newly pulled.
    Framed as freshness, never as cost — what the feed charges us is our
    business, not something to put in front of a reader. */
-function ScanNote({ meta }){
+function ScanNote({ meta, dev }){
   if(!meta || !meta.games) return null;
-  const debug = typeof location !== "undefined" && /[?&]debug=1/.test(location.search);
   const allCached = meta.cached === meta.games;
   const g = n => `${n} game${n === 1 ? "" : "s"}`;
 
@@ -1110,7 +1109,7 @@ function ScanNote({ meta }){
           ? `Scanned ${g(meta.games)} from prices already loaded — nothing has moved since the last check.`
           : `Scanned ${g(meta.games)}, ${meta.fresh} pulled fresh just now.`}
       </span>
-      {debug && (
+      {dev && (
         <span className="feed-debug">
           games={meta.games} cached={meta.cached} fresh={meta.fresh}
           {meta.spent !== null && ` spent=${meta.spent}`}
@@ -1122,10 +1121,11 @@ function ScanNote({ meta }){
 }
 
 /* How fresh the board is, and whether refreshing it costs anything.
-   Credit figures stay behind ?debug=1 — they're an operating detail rather
-   than something a user should have to think about, but they're exactly what
-   you want visible while testing. */
-function FeedNote({ meta }){
+   Request diagnostics are shown only to a developer account, never to users:
+   they describe our request mechanics and tell a reader nothing they can act
+   on. Gated on a profile column rather than a URL flag, since a link can be
+   shared or guessed. */
+function FeedNote({ meta, dev }){
   const [, tick] = useState(0);
   // Re-render periodically so "read 4 min ago" doesn't freeze at "just now".
   useEffect(() => {
@@ -1135,7 +1135,6 @@ function FeedNote({ meta }){
 
   if(!meta) return null;
 
-  const debug = typeof location !== "undefined" && /[?&]debug=1/.test(location.search);
   const ageSec = Math.round((Date.now() - meta.at) / 1000);
   const ageText = ageSec < 45 ? "just now" : `${humanDuration(ageSec)} ago`;
   const far = meta.tier === "far";
@@ -1158,7 +1157,7 @@ function FeedNote({ meta }){
           ? `No game starts for ${humanDuration(meta.lead) || "a while"}, so prices are held${held ? ` for ${held}` : ""} — refreshing won't pull new odds.`
           : "A game starts within two hours, so each refresh pulls live prices.")}
       </span>
-      {debug && (
+      {dev && (
         <span className="feed-debug">
           tier={meta.tier || "?"} ttl={meta.ttl ?? "?"}s {meta.cached ? "HIT" : "MISS"}
           {meta.spent !== null && ` spent=${meta.spent}`}
@@ -1320,6 +1319,10 @@ function useAccount(){
     email: session?.user?.email || null,
     homeState: profile?.home_state || "ALL",
     isPro: profile?.plan === "pro",
+    /* Developer view: shows request diagnostics that are meaningless to users.
+       Lives in a column the browser cannot write (see migration 6), so it
+       can't be switched on from the console the way a URL flag could. */
+    isDev: profile?.is_dev === true,
     favoriteSports: profile?.favorite_sports || [],
     gameSearchesUsed, gameSearchesLeft, fullScansUsed, fullScansLeft, consumePropRefresh,
     signUp, signIn, signOut, updateSettings, addLedgerEntry, updateLedgerEntry, refreshProfile,
@@ -2094,7 +2097,7 @@ function App(){
               {homeState !== "ALL" && ` Limited to books operating in ${stateName}.`}
             </p>
 
-            <FeedNote meta={feedMeta} />
+            <FeedNote meta={feedMeta} dev={account.isDev} />
 
             {timing === "live" && (
               <p className="note" style={{marginTop:-8}}>
@@ -3072,7 +3075,7 @@ function PlayerSearch({ account, sports, sportKey, onPickSport, homeState,
 
           {err && <div className="alert"><span aria-hidden="true">⚠</span><span>{err}</span></div>}
           {scanning && <div className="blank">Checking {candidates.length} {leagueName} game{candidates.length === 1 ? "" : "s"} for prop markets…</div>}
-          {!scanning && <ScanNote meta={scanMeta} />}
+          {!scanning && <ScanNote meta={scanMeta} dev={account.isDev} />}
 
           {results?.rows.map((r,i) => (
             <div className="game" key={i} style={{padding:"15px 17px"}}>
@@ -3085,9 +3088,9 @@ function PlayerSearch({ account, sports, sportKey, onPickSport, homeState,
 
           {/* The per-game scan breakdown was operator diagnostics dressed as a
               feature — it explained our request mechanics rather than telling
-              anyone something they could act on. Still available behind
-              ?debug=1 for working out why a scan came back thin. */}
-          {diag.length > 0 && typeof location !== "undefined" && /[?&]debug=1/.test(location.search) && (
+              anyone something they could act on. Developer accounts keep it
+              for working out why a scan came back thin. */}
+          {diag.length > 0 && account.isDev && (
             <details className="game" style={{padding:"0 17px", marginTop:14}}>
               <summary style={{padding:"12px 0", cursor:"pointer", fontSize:12,
                                fontWeight:600, color:"var(--slate)"}}>

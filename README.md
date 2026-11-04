@@ -52,6 +52,16 @@ being cached as a blank screen.
 - `ODDS_API_KEY` (secret)
 - `ALLOWED_ORIGINS` (text) — site origins, comma separated
 
+## Developer view
+
+Request diagnostics (cache state, feed usage, per-game scan detail) are shown
+only to accounts with `profiles.is_dev = true`. The browser has no UPDATE
+privilege on that column, so it cannot be switched on from the console.
+
+```sql
+update public.profiles set is_dev = true where email = '...';
+```
+
 ## Known gaps
 
 - Free-tier quotas live in browser-writable columns, so they are soft limits.

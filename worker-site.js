@@ -54,7 +54,13 @@ async function fetchPage(env) {
   var url = "https://raw.githubusercontent.com/" + repo + "/" + branch + "/" + FILE + "?cb=" + bust;
 
   var res = await fetch(url, {
-    headers: { "User-Agent": "stackd-site-worker", "Accept": "text/html" },
+    headers: {
+      "User-Agent": "stackd-site-worker",
+      "Accept": "text/html",
+      // Ask intermediaries not to hand back a stored copy. Not every CDN
+      // honours this, which is what the cb= parameter above is for.
+      "Cache-Control": "no-cache"
+    },
     cf: { cacheTtl: 0, cacheEverything: false }
   });
 
@@ -110,6 +116,25 @@ export default {
 
     if (request.method !== "GET" && request.method !== "HEAD") {
       return new Response("Method not allowed", { status: 405 });
+    }
+
+    /* ?fresh=<PURGE_KEY> skips every layer of caching and does not store the
+       result. This exists because when the site serves a stale page there is
+       otherwise no way to tell which cache is holding it — ours, Cloudflare's
+       subrequest cache, or GitHub's CDN. Gated on the key so it can't be used
+       to bypass caching for real traffic. */
+    var forceFresh = Boolean(env.PURGE_KEY) && url.searchParams.get("fresh") === env.PURGE_KEY;
+    if (forceFresh) {
+      try {
+        var fresh = await fetchPage(env);
+        return new Response(fresh, {
+          status: 200,
+          headers: pageHeaders({ "cache-control": "no-store", "x-stackd-cache": "BYPASS" })
+        });
+      } catch (e2) {
+        return new Response("bypass fetch failed: " + e2.message, {
+          status: 502, headers: { "content-type": "text/plain", "cache-control": "no-store" } });
+      }
     }
 
     var hit = await cache.match(cacheKey);

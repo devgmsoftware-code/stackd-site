@@ -10,7 +10,7 @@
      tag so it never appears in a browser tab or a shared link preview, but
      still readable from view-source to confirm which build is live without
      signing in. The Diagnostics panel shows the same value. -->
-<meta name="app-version" content="1.9" />
+<meta name="app-version" content="1.9.1" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23101A33'/%3E%3Crect x='7' y='20' width='9' height='4' rx='1.4' fill='%23FFFFFF' opacity='.45'/%3E%3Crect x='7' y='14' width='14' height='4' rx='1.4' fill='%23FFFFFF' opacity='.7'/%3E%3Crect x='7' y='8' width='19' height='4' rx='1.4' fill='%23FF5A45'/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -355,6 +355,23 @@
     border:1px solid var(--line); border-radius:var(--r-card); background:var(--card);
   }
   .billing .cmp{ font-size:12.5px; }
+
+  .refbanner{
+    display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+    margin:0 0 18px; padding:12px 14px;
+    border:1px solid color-mix(in srgb, var(--mint) 35%, var(--line));
+    background:var(--tint-mint); border-radius:var(--r-card);
+    font-size:13px; color:var(--ink);
+  }
+  .refbanner > span:nth-of-type(2){ flex:1; min-width:12rem; }
+  .refbanner-pip{
+    font-size:10.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+    color:#fff; background:var(--mint); padding:3px 8px; border-radius:999px;
+  }
+  .refbanner-x{
+    background:none; border:0; cursor:pointer; font-size:18px; line-height:1;
+    color:var(--slate); padding:2px 4px;
+  }
 
   .reflink{ display:flex; gap:8px; align-items:center; }
   .reflink code{
@@ -1154,6 +1171,43 @@ function humanDuration(seconds){
    triggered which upstream call, so per-user credit attribution cannot be
    shown honestly. The per-user figures are the daily quota counters, which
    are a usable proxy but are browser-written and reset at midnight. */
+/* Tells an invited visitor that the link worked.
+
+   The code is captured and removed from the address bar on arrival, so
+   without this the entire referral flow is invisible: you click a friend's
+   link, land on the ordinary home page, and have no reason to believe
+   anything was recorded. */
+function ReferralBanner({ account, onSignUp }){
+  const [dismissed, setDismissed] = useState(false);
+  if(dismissed) return null;
+
+  const waiting = Boolean(account.pendingReferral) && !account.referredBy;
+  const applied = Boolean(account.referredBy) && !account.isPro;
+  if(!waiting && !applied) return null;
+
+  return (
+    <div className="refbanner">
+      <span className="refbanner-pip">Invited</span>
+      {waiting ? (
+        <span>
+          A friend invited you — create an account and your first month of Pro
+          is <b>$5 off</b>.
+        </span>
+      ) : (
+        <span>
+          Your referral is applied. <b>$5 off</b> your first month whenever you
+          upgrade to Pro.
+        </span>
+      )}
+      {waiting && !account.signedIn && (
+        <button className="btn btn-flare" onClick={onSignUp}>Create account</button>
+      )}
+      <button className="refbanner-x" aria-label="Dismiss"
+        onClick={() => setDismissed(true)}>&times;</button>
+    </div>
+  );
+}
+
 /* Refer a friend: one free month when someone you invited starts paying.
    Earned months are shown from our own column, which the webhook credits —
    the browser cannot write it. */
@@ -1741,6 +1795,14 @@ function useAccount(){
     await refreshProfile();
   };
 
+  /* The invite code waiting to be redeemed, surfaced so the UI can tell a
+     visitor the link actually worked. Without this the whole flow is silent:
+     the code is captured and stripped from the URL, so an invited person sees
+     the ordinary home page and reasonably concludes nothing happened. */
+  const [pendingReferral, setPendingReferral] = useState(() => {
+    try { return localStorage.getItem(REFERRAL_STORAGE_KEY); } catch { return null; }
+  });
+
   /* Apply a referral code once the account exists.
 
      It can't run at sign-up: with email confirmation on, there's no session
@@ -1772,6 +1834,7 @@ function useAccount(){
            worth retrying — an invalid code would retry forever. */
         if(res.ok || res.status === 400 || res.status === 404){
           try { localStorage.removeItem(REFERRAL_STORAGE_KEY); } catch { /* ignore */ }
+          if(!cancelled) setPendingReferral(null);
         }
         if(!cancelled && body.ok && !body.already) await refreshProfile();
       }catch{ /* offline; try again next load */ }
@@ -1790,6 +1853,8 @@ function useAccount(){
        Lives in a column the browser cannot write (see migration 6), so it
        can't be switched on from the console the way a URL flag could. */
     isDev: profile?.is_dev === true,
+    pendingReferral,
+    referredBy: profile?.referred_by || null,
     favoriteSports: profile?.favorite_sports || [],
     gameSearchesUsed, gameSearchesLeft, fullScansUsed, fullScansLeft, consumePropRefresh,
     signUp, signIn, signOut, updateSettings, addLedgerEntry, updateLedgerEntry, refreshProfile,
@@ -2533,6 +2598,7 @@ function App(){
       </header>
 
       <main className="shell" style={{viewTransitionName:"page"}}>
+        <ReferralBanner account={account} onSignUp={() => setAuthOpen(true)} />
         {/* Ads removed in V1.3 — a placeholder box cost polish for no revenue,
             and display CPM is meaningless at this traffic. The full AdSense
             implementation is in V1.2 if it is ever worth reviving. */}

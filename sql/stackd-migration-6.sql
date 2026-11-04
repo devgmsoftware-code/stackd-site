@@ -46,3 +46,24 @@ order by is_dev desc, created_at desc;
 --   update public.profiles set is_dev = true  where email = '...';
 --   update public.profiles set is_dev = false where email = '...';
 -- ------------------------------------------------------------
+
+
+-- ------------------------------------------------------------
+-- Migration 7 (V1.6) — let developer accounts read every profile row, so the
+-- diagnostics panel can report across all users. Applied already.
+--
+-- Reading is_dev inside a policy ON profiles would recurse: the policy would
+-- query the table it guards. A SECURITY DEFINER function runs as the owner and
+-- bypasses RLS for that one lookup, breaking the cycle. search_path is pinned
+-- so the function cannot be redirected at a shadow table.
+-- ------------------------------------------------------------
+-- create or replace function public.current_user_is_dev()
+-- returns boolean language sql stable security definer
+-- set search_path = public, pg_temp as $$
+--   select coalesce((select p.is_dev from public.profiles p where p.id = auth.uid()), false);
+-- $$;
+-- grant execute on function public.current_user_is_dev() to authenticated;
+--
+-- Additive: profiles_select_own still limits normal users to their own row.
+-- create policy profiles_select_dev_all on public.profiles
+--   for select to authenticated using (public.current_user_is_dev());

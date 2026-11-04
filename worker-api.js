@@ -166,6 +166,36 @@ export default {
       return new Response("Method not allowed", { status: 405, headers: cors });
     }
 
+    /* Live feed quota, for the developer panel.
+       /v4/sports is billed at zero, so this reads the counters for free. It
+       deliberately bypasses the cache: a cached response carries whatever
+       counts were current when it was stored, which is precisely the number a
+       usage readout must not report. */
+    if (url.pathname === "/__usage") {
+      if (!env.ODDS_API_KEY) {
+        return Response.json({ ok: false, error: "no key configured" },
+          { status: 500, headers: Object.assign({}, cors, { "cache-control": "no-store" }) });
+      }
+      try {
+        var probe = await fetch(UPSTREAM + "/v4/sports/?apiKey=" + encodeURIComponent(env.ODDS_API_KEY), {
+          headers: { "Accept": "application/json" },
+          cf: { cacheTtl: 0, cacheEverything: false }
+        });
+        var rem = probe.headers.get("x-requests-remaining");
+        var usd = probe.headers.get("x-requests-used");
+        return Response.json({
+          ok: probe.ok,
+          status: probe.status,
+          remaining: rem === null ? null : Number(rem),
+          used: usd === null ? null : Number(usd),
+          checkedAt: new Date().toISOString()
+        }, { headers: Object.assign({}, cors, { "cache-control": "no-store" }) });
+      } catch (e) {
+        return Response.json({ ok: false, error: String(e.message) },
+          { status: 502, headers: Object.assign({}, cors, { "cache-control": "no-store" }) });
+      }
+    }
+
     var route = null;
     for (var i = 0; i < ROUTES.length; i++) {
       if (ROUTES[i].re.test(url.pathname)) { route = ROUTES[i]; break; }

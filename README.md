@@ -52,6 +52,31 @@ being cached as a blank screen.
 - `ODDS_API_KEY` (secret)
 - `ALLOWED_ORIGINS` (text) — site origins, comma separated
 
+## Edge Functions
+
+`create-checkout`, `billing-portal`, `claim-referral` and `stripe-webhook` are
+deployed to Supabase directly, not from this repo. The copies under
+`functions/` are reference snapshots and **may lag the deployed version** —
+the live code is in the Supabase dashboard under Edge Functions.
+
+Secrets they read: `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`,
+`STRIPE_WEBHOOK_SECRET`, `SITE_URL`.
+
+## Referrals
+
+One free month per referred account that starts paying.
+
+- Every profile gets a `referral_code`; the invite link is `/?ref=CODE`.
+- The code is parked in localStorage on arrival and redeemed on first signed-in
+  load, because email confirmation means there's no session at signup.
+- `claim-referral` enforces the rules: one per account, never your own code,
+  only while the account is new.
+- The reward is paid by the webhook on `invoice.payment_succeeded` with
+  `billing_reason = subscription_create` — real money, not merely an active
+  subscription, so a trial or a reversed card earns nothing.
+- Credit is spent at checkout as trial days and returned by
+  `checkout.session.expired` if the checkout is abandoned.
+
 ## Developer view
 
 Request diagnostics (cache state, feed usage, per-game scan detail) are shown

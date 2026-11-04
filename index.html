@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="color-scheme" content="light" />
 <meta name="description" content="Stackd compares sportsbook odds across every book in your state, prices your parlay at each one, and tracks how your picks actually performed." />
-<title>Stackd V1.4 — every book, one board</title>
+<title>Stackd V1.5 — every book, one board</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23101A33'/%3E%3Crect x='7' y='20' width='9' height='4' rx='1.4' fill='%23FFFFFF' opacity='.45'/%3E%3Crect x='7' y='14' width='14' height='4' rx='1.4' fill='%23FFFFFF' opacity='.7'/%3E%3Crect x='7' y='8' width='19' height='4' rx='1.4' fill='%23FF5A45'/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -343,6 +343,37 @@
     background-image:linear-gradient(45deg, transparent 50%, var(--slate) 50%), linear-gradient(135deg, var(--slate) 50%, transparent 50%);
     background-position:calc(100% - 15px) center, calc(100% - 10px) center;
     background-size:5px 5px, 5px 5px; background-repeat:no-repeat;
+  }
+
+  /* V1.5 — freshness and cost of the last feed read. Coral stays reserved for
+     "best available price", so this uses mint for cached and gold for a fresh
+     pull rather than borrowing the accent. */
+  .feed{
+    display:flex; align-items:center; flex-wrap:wrap; gap:8px;
+    margin:-6px 0 16px; font-size:12px; color:var(--slate); line-height:1.5;
+  }
+  .feed-pip{
+    display:inline-flex; align-items:center; gap:6px;
+    padding:3px 9px; border-radius:999px; white-space:nowrap;
+    border:1px solid var(--line); background:var(--card);
+    font-weight:600; color:var(--ink);
+  }
+  .feed-pip::before{
+    content:""; width:6px; height:6px; border-radius:50%; background:var(--slate-lo);
+  }
+  .feed-pip[data-state="cached"]{
+    background:var(--tint-mint);
+    border-color:color-mix(in srgb, var(--mint) 38%, var(--line));
+  }
+  .feed-pip[data-state="cached"]::before{ background:var(--mint); }
+  .feed-pip[data-state="fresh"]{
+    background:var(--tint-gold);
+    border-color:color-mix(in srgb, var(--gold) 38%, var(--line));
+  }
+  .feed-pip[data-state="fresh"]::before{ background:var(--gold); }
+  .feed-debug{
+    font-family:var(--data); font-size:11px; color:var(--slate-lo);
+    width:100%;
   }
 
   .note{ font-size:12.5px; color:var(--slate); margin:0 0 16px; line-height:1.6; }
@@ -995,6 +1026,90 @@ const FREE_GAME_SEARCHES = 3;   // single-game prop loads per day, free plan
 const FREE_FULL_SCANS   = 1;    // "scan upcoming" runs per day, free plan
 const PRO_PRICE = "9.99";
 
+/* V1.5 — what the last read of the odds feed actually cost.
+   The proxy reports whether it answered from its own cache (x-stackd-cache)
+   and which TTL tier it picked (x-stackd-tier: "far" when the earliest game is
+   more than two hours out, "live" when it isn't). Surfacing that does two
+   jobs: it tells people how fresh the prices are, and it makes plain during
+   testing whether a refresh spent anything or cost nothing at all. */
+function readFeedMeta(res, prevRemaining){
+  const num = v => { const n = Number(v); return Number.isFinite(n) ? n : null; };
+  const remaining = num(res.headers.get("x-requests-remaining"));
+  /* Credits bill as markets x regions, so one board read can cost several.
+     Diffing the counter is the only honest measure of what a refresh cost. */
+  const spent = (prevRemaining !== null && remaining !== null && prevRemaining >= remaining)
+    ? prevRemaining - remaining
+    : null;
+  return {
+    cached: res.headers.get("x-stackd-cache") === "HIT",
+    tier:   res.headers.get("x-stackd-tier"),
+    ttl:    num(res.headers.get("x-stackd-ttl")),
+    lead:   num(res.headers.get("x-stackd-lead")),
+    remaining,
+    spent,
+    at: Date.now(),
+  };
+}
+
+function humanDuration(seconds){
+  if(seconds === null || seconds === undefined || seconds < 0) return null;
+  if(seconds < 60) return "under a minute";
+  const m = Math.round(seconds / 60);
+  if(m < 60) return `${m} min`;
+  const h = Math.floor(m / 60), rm = m % 60;
+  if(h < 24) return rm ? `${h}h ${rm}m` : `${h}h`;
+  const d = Math.floor(h / 24);
+  return `${d}d ${h % 24}h`;
+}
+
+/* How fresh the board is, and whether refreshing it costs anything.
+   Credit figures stay behind ?debug=1 — they're an operating detail rather
+   than something a user should have to think about, but they're exactly what
+   you want visible while testing. */
+function FeedNote({ meta }){
+  const [, tick] = useState(0);
+  // Re-render periodically so "read 4 min ago" doesn't freeze at "just now".
+  useEffect(() => {
+    const id = setInterval(() => tick(n => n + 1), 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  if(!meta) return null;
+
+  const debug = typeof location !== "undefined" && /[?&]debug=1/.test(location.search);
+  const ageSec = Math.round((Date.now() - meta.at) / 1000);
+  const ageText = ageSec < 45 ? "just now" : `${humanDuration(ageSec)} ago`;
+  const far = meta.tier === "far";
+  const held = humanDuration(meta.ttl);
+  /* Only explain the caching when the proxy actually told us which tier it
+     chose. Without that header we know nothing about kickoff times, and
+     guessing "a game starts soon" would be a confident lie about how fresh
+     these prices are. */
+  const known = meta.tier === "far" || meta.tier === "live";
+
+  return (
+    <p className="feed">
+      <span className="feed-pip" data-state={meta.cached ? "cached" : "fresh"}>
+        {meta.cached ? "From cache" : "Fresh prices"}
+      </span>
+      <span>
+        Read {ageText}.
+        {known && " "}
+        {known && (far
+          ? `No game starts for ${humanDuration(meta.lead) || "a while"}, so prices are held${held ? ` for ${held}` : ""} — refreshing won't pull new odds.`
+          : "A game starts within two hours, so each refresh pulls live prices.")}
+      </span>
+      {debug && (
+        <span className="feed-debug">
+          tier={meta.tier || "?"} ttl={meta.ttl ?? "?"}s {meta.cached ? "HIT" : "MISS"}
+          {meta.spent !== null && ` spent=${meta.spent}`}
+          {meta.remaining !== null && ` left=${meta.remaining}`}
+        </span>
+      )}
+    </p>
+  );
+}
+
 /* Closing line value: how your locked price compares to where the line closed.
    Positive means you beat the close — the metric that actually predicts whether
    someone is picking well, independent of short-run luck. */
@@ -1508,6 +1623,9 @@ function App(){
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [quota, setQuota] = useState(null);
+  const [feedMeta, setFeedMeta] = useState(null);
+  // Previous credit count, kept in a ref so diffing it doesn't trigger renders.
+  const quotaRef = useRef(null);
   const [parlay, setParlay] = useState([]);
   const [stake, setStake] = useState(20);
   const [bookBoosts, setBookBoosts] = useState({});
@@ -1589,8 +1707,12 @@ function App(){
     setLoading(true); setError("");
     try{
       const res = await fetch(`${ODDS_BASE}/v4/sports/${sportKey}/odds/?regions=us,us2&markets=${marketsFor(sportKey)}&oddsFormat=american`);
-      const remaining = res.headers.get("x-requests-remaining");
-      if(remaining !== null) setQuota(remaining);
+      const meta = readFeedMeta(res, quotaRef.current);
+      if(meta.remaining !== null){
+        setQuota(String(meta.remaining));
+        quotaRef.current = meta.remaining;
+      }
+      setFeedMeta(meta);
       if(!res.ok) throw new Error(await apiError(res));
       setGames(await res.json());
     }catch(e){
@@ -1911,6 +2033,8 @@ function App(){
               book, plus spreads, totals and props.
               {homeState !== "ALL" && ` Limited to books operating in ${stateName}.`}
             </p>
+
+            <FeedNote meta={feedMeta} />
 
             {timing === "live" && (
               <p className="note" style={{marginTop:-8}}>

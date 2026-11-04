@@ -10,7 +10,7 @@
      tag so it never appears in a browser tab or a shared link preview, but
      still readable from view-source to confirm which build is live without
      signing in. The Diagnostics panel shows the same value. -->
-<meta name="app-version" content="2.0" />
+<meta name="app-version" content="2.1" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23101A33'/%3E%3Crect x='7' y='20' width='9' height='4' rx='1.4' fill='%23FFFFFF' opacity='.45'/%3E%3Crect x='7' y='14' width='14' height='4' rx='1.4' fill='%23FFFFFF' opacity='.7'/%3E%3Crect x='7' y='8' width='19' height='4' rx='1.4' fill='%23FF5A45'/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1966,7 +1966,7 @@ function LineTicker({ games }){
 const SUPPORT_EMAIL = "dev.gm.software@gmail.com";
 const PRIVACY_UPDATED = "4 November 2026";
 
-function PrivacyPage(){
+function PrivacyPage({ onTerms }){
   return (
     <React.Fragment>
       <div className="page-head">
@@ -2066,6 +2066,13 @@ function PrivacyPage(){
         edited here.</p>
       </div>
 
+      <div className="prose-card">
+        <h3>Terms</h3>
+        <p>Using Stackd also means agreeing to our{" "}
+          <button className="linkish" onClick={onTerms}>terms of service</button>, which cover
+          subscriptions, referrals and the limits of what this tool promises.</p>
+      </div>
+
       <div className="prose-card" id="contact">
         <h3>Contact</h3>
         <p>Privacy requests, data deletion, or anything wrong with the service:</p>
@@ -2081,7 +2088,147 @@ function PrivacyPage(){
   );
 }
 
-function SiteFooter({ onPrivacy }){
+
+/* Terms of service.
+
+   Describes the product that actually exists: the referral rules below match
+   what the webhook enforces (three-month cap, reversal on refund or
+   chargeback), and the subscription terms match what Stripe is configured to
+   do. Terms that contradict the code are worse than no terms, because they
+   are a promise the software will break.
+
+   GOVERNING_STATE is a guess from the home state on this account and needs
+   confirming — it decides where any dispute is heard. */
+const GOVERNING_STATE = "New York";
+
+function TermsPage({ onPrivacy }){
+  return (
+    <React.Fragment>
+      <div className="page-head">
+        <p className="eyebrow">Legal</p>
+        <h1 className="page-title">Terms of service</h1>
+        <p className="page-lede">
+          The agreement between you and Stackd. Last updated {PRIVACY_UPDATED}.
+        </p>
+      </div>
+
+      <div className="prose-card">
+        <h3>What Stackd is, and what it isn't</h3>
+        <p>Stackd compares published sportsbook prices, prices a parlay at each book, and lets you
+        record and review your own picks.</p>
+        <p><b>Stackd is not a sportsbook.</b> We do not accept wagers, hold funds, place bets for
+        you, or settle them. Every bet you place happens at a sportsbook, under that book's own
+        terms. We are not affiliated with any sportsbook.</p>
+        <p>Nothing here is betting advice or a prediction. Prices and analysis are information,
+        and acting on them is your decision alone.</p>
+      </div>
+
+      <div className="prose-card">
+        <h3>Who may use it</h3>
+        <p>You must be at least 21, or the legal betting age where you are if that is higher, and
+        in a place where using a tool like this is lawful. You are responsible for knowing the
+        rules that apply to you.</p>
+        <p>One account per person. Keep your password to yourself — anything done through your
+        account is treated as done by you.</p>
+      </div>
+
+      <div className="prose-card">
+        <h3>Odds data</h3>
+        <p>Odds come from a third-party feed and are cached for up to twenty minutes when no game
+        is close to starting. They can differ from what a book is showing at the moment you look,
+        and state availability is approximate.</p>
+        <p><b>Confirm the price and the market at the sportsbook before you bet.</b> We don't
+        guarantee that any price shown here is available, current or correct, and we are not
+        responsible for a bet placed on the strength of a number that had moved.</p>
+      </div>
+
+      <div className="prose-card">
+        <h3>Subscriptions and billing</h3>
+        <p>Pro is ${PRO_PRICE} per month, billed by Stripe and renewing automatically until
+        cancelled.</p>
+        <ul className="plain">
+          <li>Cancel any time from the billing portal in Settings.</li>
+          <li>Cancelling keeps Pro until the end of the period you've already paid for.</li>
+          <li>Part-months are not refunded, since you keep the access you paid for.</li>
+          <li>If a payment fails, Stripe retries. Access continues during those retries and ends
+              if it ultimately fails.</li>
+          <li>If the price changes, you'll be told before it applies to you.</li>
+        </ul>
+      </div>
+
+      <div className="prose-card">
+        <h3>Referrals</h3>
+        <p>Invite someone with your link and, once their first payment succeeds, you get a free
+        month and they get $5 off their first month.</p>
+        <ul className="plain">
+          <li>Up to three free months in total, per account, ever.</li>
+          <li>The person you invite has to be a new account using your link at sign-up. You can't
+              refer yourself.</li>
+          <li>Rewards have no cash value and can't be transferred or withdrawn.</li>
+          <li>If the payment behind a reward is refunded or charged back, that reward is reversed.</li>
+          <li>Rewards obtained through fake or duplicate accounts will be removed, and we may close
+              the accounts involved.</li>
+          <li>We can change or end the referral programme; months already earned stay yours.</li>
+        </ul>
+      </div>
+
+      <div className="prose-card">
+        <h3>Using it fairly</h3>
+        <p>Please don't scrape the site, hammer it with automated requests, resell or redistribute
+        the odds data, try to get around plan limits, or attempt to reach other users' data.</p>
+        <p>The odds feed is licensed to us and is expensive per request. Automated access to it
+        outside normal use of the app is the fastest way to have an account closed.</p>
+      </div>
+
+      <div className="prose-card">
+        <h3>Your content</h3>
+        <p>The picks you record are yours. You grant us only what's needed to store and show them
+        back to you. The site itself — its design, text and code — stays ours.</p>
+      </div>
+
+      <div className="prose-card">
+        <h3>Ending the agreement</h3>
+        <p>Close your account any time by cancelling and emailing us. We can suspend or close an
+        account that breaks these terms, or if we stop operating the service. If we close your
+        account for something other than a breach, we'll refund the unused part of the period.</p>
+      </div>
+
+      <div className="prose-card">
+        <h3>No warranty, and limits on liability</h3>
+        <p>Stackd is provided as-is. We don't promise it will be available without interruption or
+        free of errors, and we don't warrant that the odds shown are accurate.</p>
+        <p><b>We are not liable for betting losses.</b> To the extent the law allows, our total
+        liability for any claim is limited to what you paid us in the twelve months before it
+        arose. Nothing here limits liability that cannot legally be limited.</p>
+      </div>
+
+      <div className="prose-card">
+        <h3>Gambling is meant to be fun</h3>
+        <p>If it stops being fun, step away and talk to someone. <b>1-800-GAMBLER</b> is free,
+        confidential and available at any hour.</p>
+      </div>
+
+      <div className="prose-card">
+        <h3>Changes, and the rest</h3>
+        <p>If these terms change, the date at the top changes too, and anything significant will
+        be flagged in the app. Continuing to use Stackd after that means you accept the new terms.</p>
+        <p>These terms are governed by the laws of the State of {GOVERNING_STATE}. If part of them
+        is unenforceable, the rest still stands.</p>
+        <p>How we handle your information is set out in our{" "}
+          <button className="linkish" onClick={onPrivacy}>privacy policy</button>.</p>
+      </div>
+
+      <div className="prose-card">
+        <h3>Contact</h3>
+        <p style={{margin:"4px 0 0"}}>
+          <a className="contact-link" href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>
+        </p>
+      </div>
+    </React.Fragment>
+  );
+}
+
+function SiteFooter({ onPrivacy, onTerms }){
   return (
     <footer className="site-foot">
       <div className="shell foot-grid">
@@ -2103,6 +2250,8 @@ function SiteFooter({ onPrivacy }){
           </span>
           <p className="foot-links">
             <button className="linkish" onClick={() => onPrivacy()}>Privacy policy</button>
+            <span aria-hidden="true"> · </span>
+            <button className="linkish" onClick={() => onTerms()}>Terms</button>
             <span aria-hidden="true"> · </span>
             <a href={`mailto:${SUPPORT_EMAIL}`}>Contact</a>
           </p>
@@ -2383,8 +2532,13 @@ function SettingsPopover({ account, sports }){
 function App(){
   const [tab, setTab] = useState(
     // A real URL, because both app stores require a privacy policy link.
-    typeof location !== "undefined" && location.pathname.replace(/\/+$/, "") === "/privacy"
-      ? "privacy" : "board"
+    (function(){
+      if(typeof location === "undefined") return "board";
+      const path = location.pathname.replace(/\/+$/, "");
+      if(path === "/privacy") return "privacy";
+      if(path === "/terms") return "terms";
+      return "board";
+    })()
   );
   const [timing, setTiming] = useState("pre");
   const [sports, setSports] = useState([]);
@@ -2434,7 +2588,7 @@ function App(){
     if(t === tab) return;
     // Keep /privacy addressable and shareable; everything else lives at /.
     try{
-      const want = t === "privacy" ? "/privacy" : "/";
+      const want = (t === "privacy" || t === "terms") ? `/${t}` : "/";
       if(location.pathname !== want) history.pushState({}, "", want);
     }catch{ /* ignore */ }
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -2866,10 +3020,11 @@ function App(){
         )}
         {tab === "pricing" && <PricingPage account={account} onSignIn={() => openAuth("signup")} />}
         {tab === "info" && <InfoPage />}
-        {tab === "privacy" && <PrivacyPage />}
+        {tab === "privacy" && <PrivacyPage onTerms={() => goTab("terms")} />}
+        {tab === "terms" && <TermsPage onPrivacy={() => goTab("privacy")} />}
       </main>
 
-      <SiteFooter onPrivacy={() => goTab("privacy")} />
+      <SiteFooter onPrivacy={() => goTab("privacy")} onTerms={() => goTab("terms")} />
 
       <AuthDialog key={authMode} account={account} open={authOpen} initialMode={authMode}
         onClose={() => setAuthOpen(false)} />

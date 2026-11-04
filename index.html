@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="color-scheme" content="light" />
 <meta name="description" content="Stackd compares sportsbook odds across every book in your state, prices your parlay at each one, and tracks how your picks actually performed." />
-<title>Stackd V1.6 — every book, one board</title>
+<title>Stackd V1.6.1 — every book, one board</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23101A33'/%3E%3Crect x='7' y='20' width='9' height='4' rx='1.4' fill='%23FFFFFF' opacity='.45'/%3E%3Crect x='7' y='14' width='14' height='4' rx='1.4' fill='%23FFFFFF' opacity='.7'/%3E%3Crect x='7' y='8' width='19' height='4' rx='1.4' fill='%23FF5A45'/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -400,6 +400,8 @@
     font-family:var(--data); font-size:11px; color:var(--slate-lo);
     width:100%;
   }
+  /* The user-facing form: a timestamp, nothing else. */
+  .feed-age{ font-size:12px; color:var(--slate-lo); }
 
   .note{ font-size:12.5px; color:var(--slate); margin:0 0 16px; line-height:1.6; }
   .note strong{ color:var(--ink); font-weight:600; }
@@ -1281,7 +1283,10 @@ function DevPanel({ account }){
    Framed as freshness, never as cost — what the feed charges us is our
    business, not something to put in front of a reader. */
 function ScanNote({ meta, dev }){
-  if(!meta || !meta.games) return null;
+  /* Developer-only. A scan is something the user just asked for and the
+     results are right there, so narrating how it was served tells them
+     nothing — it only reads as instrumentation left switched on. */
+  if(!dev || !meta || !meta.games) return null;
   const allCached = meta.cached === meta.games;
   const g = n => `${n} game${n === 1 ? "" : "s"}`;
 
@@ -1325,6 +1330,19 @@ function FeedNote({ meta, dev }){
   const ageText = ageSec < 45 ? "just now" : `${humanDuration(ageSec)} ago`;
   const far = meta.tier === "far";
   const held = humanDuration(meta.ttl);
+
+  /* Users get the timestamp and nothing else. How the price was served is our
+     plumbing, but WHEN it was read is the one thing that changes how much a
+     number should be trusted — on a board that can serve prices up to twenty
+     minutes old, dropping it entirely would let someone treat a held price as
+     live. Plain wording, no mechanism. */
+  if(!dev){
+    return (
+      <p className="feed">
+        <span className="feed-age">Prices updated {ageText}.</span>
+      </p>
+    );
+  }
   /* Only explain the caching when the proxy actually told us which tier it
      chose. Without that header we know nothing about kickoff times, and
      guessing "a game starts soon" would be a confident lie about how fresh

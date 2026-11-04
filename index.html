@@ -10,7 +10,7 @@
      tag so it never appears in a browser tab or a shared link preview, but
      still readable from view-source to confirm which build is live without
      signing in. The Diagnostics panel shows the same value. -->
-<meta name="app-version" content="1.9.2" />
+<meta name="app-version" content="2.0" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23101A33'/%3E%3Crect x='7' y='20' width='9' height='4' rx='1.4' fill='%23FFFFFF' opacity='.45'/%3E%3Crect x='7' y='14' width='14' height='4' rx='1.4' fill='%23FFFFFF' opacity='.7'/%3E%3Crect x='7' y='8' width='19' height='4' rx='1.4' fill='%23FF5A45'/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -355,6 +355,14 @@
     border:1px solid var(--line); border-radius:var(--r-card); background:var(--card);
   }
   .billing .cmp{ font-size:12.5px; }
+
+  .foot-links{ margin:10px 0 0; font-size:11.5px; }
+  .foot-links a, .foot-links .linkish{
+    color:rgb(255 255 255 / .72); text-decoration:underline; font-size:11.5px;
+  }
+  .contact-link{ font-weight:600; color:var(--ink); }
+  ul.plain{ margin:8px 0 0; padding-left:18px; }
+  ul.plain li{ margin:5px 0; line-height:1.65; }
 
   .refbanner{
     display:flex; align-items:center; gap:12px; flex-wrap:wrap;
@@ -1944,7 +1952,136 @@ function LineTicker({ games }){
   );
 }
 
-function SiteFooter(){
+
+/* Privacy policy.
+
+   Written against what this app actually does rather than from a template:
+   every processor named below is one we really use, and the "no analytics,
+   no trackers, no ad networks" claim is true as of this build — there is no
+   such script anywhere in the page. If that ever changes, this page has to
+   change with it, or it becomes a false statement rather than an omission.
+
+   Reachable at /privacy so it has a stable URL, which both app stores
+   require for a listing. */
+const SUPPORT_EMAIL = "dev.gm.software@gmail.com";
+const PRIVACY_UPDATED = "4 November 2026";
+
+function PrivacyPage(){
+  return (
+    <React.Fragment>
+      <div className="page-head">
+        <p className="eyebrow">Legal</p>
+        <h1 className="page-title">Privacy policy</h1>
+        <p className="page-lede">
+          What Stackd collects, why, and who else sees it. Last updated {PRIVACY_UPDATED}.
+        </p>
+      </div>
+
+      <div className="prose-card">
+        <h3>The short version</h3>
+        <ul className="plain">
+          <li>We collect the minimum needed to run an account and a subscription.</li>
+          <li>Your picks and performance are private to your account. No other user can see them.</li>
+          <li>No ads, no analytics, no third-party trackers. We don't sell or share your data.</li>
+          <li>We never see your card details.</li>
+        </ul>
+      </div>
+
+      <div className="prose-card">
+        <h3>What we collect</h3>
+        <p><b>Account.</b> Your email address, username, the state you bet in, and any leagues or
+        teams you favourite. Used to sign you in and to show only books that operate where you are.</p>
+        <p><b>Your picks.</b> The legs, prices, stakes and results you record. Stored against your
+        account and used to show your own history and performance.</p>
+        <p><b>Usage counts.</b> How many searches and scans you run each day, so free-plan limits
+        can be applied. Reset daily.</p>
+        <p><b>Billing.</b> Your Stripe customer and subscription identifiers, plan status and
+        renewal date. <b>Card numbers never reach us</b> — payment details go directly to Stripe.</p>
+        <p><b>Referrals.</b> Your referral code, and which account referred you if you arrived
+        through an invite link.</p>
+        <p><b>On your device.</b> Browser storage holds a referral code from an invite link and
+        small interface preferences. No advertising cookies.</p>
+      </div>
+
+      <div className="prose-card">
+        <h3>What we don't do</h3>
+        <ul className="plain">
+          <li>No advertising networks, analytics packages, tracking pixels or session recording.</li>
+          <li>No selling, renting or sharing of personal information.</li>
+          <li>No personal information is sent to the odds provider — those requests contain
+              leagues and games only, never anything about you.</li>
+        </ul>
+      </div>
+
+      <div className="prose-card">
+        <h3>Who processes data for us</h3>
+        <p>Each of these receives only what it needs to do its job:</p>
+        <ul className="plain">
+          <li><b>Supabase</b> — accounts, sign-in and the database. Hosted in Canada.</li>
+          <li><b>Cloudflare</b> — serves the site and proxies odds requests.</li>
+          <li><b>Stripe</b> — payments and subscriptions, including card details.</li>
+          <li><b>Resend</b> — account emails such as confirmation and password reset.</li>
+        </ul>
+      </div>
+
+      <div className="prose-card">
+        <h3>How your picks stay private</h3>
+        <p>Privacy here is enforced by the database, not by the interface. Every query runs as your
+        account and can only return rows belonging to you, so there is no screen or request that
+        would show another user's picks.</p>
+        <p>One exception worth stating plainly: the site operator can see account records — email
+        address, plan, and daily usage counts — for support and to detect abuse. Your recorded
+        picks are not part of that view.</p>
+      </div>
+
+      <div className="prose-card">
+        <h3>Keeping and deleting your data</h3>
+        <p>Account data is kept while your account is open. Email us to delete it and we'll remove
+        your account and picks within 30 days.</p>
+        <p>Payment records are the exception: Stripe retains transaction history, and we keep the
+        identifiers tied to it, because both of us have to for tax and accounting. Those records
+        contain no card numbers.</p>
+      </div>
+
+      <div className="prose-card">
+        <h3>Your choices</h3>
+        <ul className="plain">
+          <li>View and change your details any time in Settings.</li>
+          <li>Export your pick history to CSV from the Dashboard.</li>
+          <li>Cancel a subscription yourself in the billing portal.</li>
+          <li>Ask us for a copy of your data, or for it to be deleted, at the address below.</li>
+        </ul>
+      </div>
+
+      <div className="prose-card">
+        <h3>Age</h3>
+        <p>Stackd is for adults of legal betting age — 21 or over in most of the United States. It
+        is not directed at children and we don't knowingly collect their information.</p>
+      </div>
+
+      <div className="prose-card">
+        <h3>Changes</h3>
+        <p>If this policy changes, the date at the top changes with it. Anything that materially
+        affects how your information is handled will be flagged in the app rather than quietly
+        edited here.</p>
+      </div>
+
+      <div className="prose-card" id="contact">
+        <h3>Contact</h3>
+        <p>Privacy requests, data deletion, or anything wrong with the service:</p>
+        <p style={{margin:"10px 0 0"}}>
+          <a className="contact-link" href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>
+        </p>
+        <p className="fine" style={{marginTop:10}}>
+          One person reads that inbox, so give it a day or two. If it's about billing, include the
+          email address on the account.
+        </p>
+      </div>
+    </React.Fragment>
+  );
+}
+
+function SiteFooter({ onPrivacy }){
   return (
     <footer className="site-foot">
       <div className="shell foot-grid">
@@ -1964,6 +2101,11 @@ function SiteFooter(){
           <span className="foot-21">
             <b>21+</b> If gambling stops being fun, call 1-800-GAMBLER.
           </span>
+          <p className="foot-links">
+            <button className="linkish" onClick={() => onPrivacy()}>Privacy policy</button>
+            <span aria-hidden="true"> · </span>
+            <a href={`mailto:${SUPPORT_EMAIL}`}>Contact</a>
+          </p>
         </div>
       </div>
     </footer>
@@ -2239,7 +2381,11 @@ function SettingsPopover({ account, sports }){
 
 /* ---------------- main ---------------- */
 function App(){
-  const [tab, setTab] = useState("board");
+  const [tab, setTab] = useState(
+    // A real URL, because both app stores require a privacy policy link.
+    typeof location !== "undefined" && location.pathname.replace(/\/+$/, "") === "/privacy"
+      ? "privacy" : "board"
+  );
   const [timing, setTiming] = useState("pre");
   const [sports, setSports] = useState([]);
   const [allSports, setAllSports] = useState([]);
@@ -2286,6 +2432,11 @@ function App(){
   // View Transitions on tab change where supported; plain state change otherwise.
   const goTab = (t) => {
     if(t === tab) return;
+    // Keep /privacy addressable and shareable; everything else lives at /.
+    try{
+      const want = t === "privacy" ? "/privacy" : "/";
+      if(location.pathname !== want) history.pushState({}, "", want);
+    }catch{ /* ignore */ }
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if(document.startViewTransition && !reduce){
       document.startViewTransition(() => ReactDOM.flushSync(() => setTab(t)));
@@ -2715,9 +2866,10 @@ function App(){
         )}
         {tab === "pricing" && <PricingPage account={account} onSignIn={() => openAuth("signup")} />}
         {tab === "info" && <InfoPage />}
+        {tab === "privacy" && <PrivacyPage />}
       </main>
 
-      <SiteFooter />
+      <SiteFooter onPrivacy={() => goTab("privacy")} />
 
       <AuthDialog key={authMode} account={account} open={authOpen} initialMode={authMode}
         onClose={() => setAuthOpen(false)} />

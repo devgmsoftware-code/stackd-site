@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="color-scheme" content="light" />
 <meta name="description" content="Stackd compares sportsbook odds across every book in your state, prices your parlay at each one, and tracks how your picks actually performed." />
-<title>Stackd V1.6.1 — every book, one board</title>
+<title>Stackd V1.7 — every book, one board</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23101A33'/%3E%3Crect x='7' y='20' width='9' height='4' rx='1.4' fill='%23FFFFFF' opacity='.45'/%3E%3Crect x='7' y='14' width='14' height='4' rx='1.4' fill='%23FFFFFF' opacity='.7'/%3E%3Crect x='7' y='8' width='19' height='4' rx='1.4' fill='%23FF5A45'/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -344,6 +344,12 @@
     background-position:calc(100% - 15px) center, calc(100% - 10px) center;
     background-size:5px 5px, 5px 5px; background-repeat:no-repeat;
   }
+
+  .billing{
+    margin:18px 0 4px; padding:14px 15px 15px;
+    border:1px solid var(--line); border-radius:var(--r-card); background:var(--card);
+  }
+  .billing .cmp{ font-size:12.5px; }
 
   /* Developer diagnostics panel. Visually set apart from the user's own
      settings so there's no chance of reading these numbers as something the
@@ -1135,6 +1141,83 @@ function humanDuration(seconds){
    triggered which upstream call, so per-user credit attribution cannot be
    shown honestly. The per-user figures are the daily quota counters, which
    are a usable proxy but are browser-written and reset at midnight. */
+/* Subscription state and the way out of it, in Settings, for every account.
+   Everything that touches a card — cancelling, changing payment method,
+   invoices, reactivating — happens on Stripe's hosted portal rather than
+   being rebuilt here, so no card detail ever reaches this app. */
+function BillingSection({ account }){
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const go = async (fn) => {
+    setBusy(true); setErr("");
+    try{ await openStripePage(fn); }
+    catch(e){ setErr(e.message); setBusy(false); }
+  };
+
+  const status = account.profile?.subscription_status || null;
+  const renews = account.profile?.current_period_end
+    ? new Date(account.profile.current_period_end) : null;
+  const hasBillingHistory = Boolean(account.profile?.stripe_customer_id);
+
+  /* Stripe keeps a subscription alive while it retries a failed card. The
+     account still works, but saying nothing would leave someone to find out
+     via a cancellation they didn't expect. */
+  const inDunning = status === "past_due" || status === "unpaid";
+  const endingSoon = account.profile?.cancel_at_period_end === true;
+
+  const fmt = (d) => d.toLocaleDateString(undefined, { month:"short", day:"numeric", year:"numeric" });
+
+  return (
+    <div className="billing">
+      <div className="devsec" style={{marginTop:0, borderTop:0, paddingTop:0}}>Billing</div>
+
+      <div className="cmp">
+        <span>Current plan</span>
+        <span className="implied">
+          <span className="tier" data-t={account.isPro ? "pro" : "free"}>
+            {account.isPro ? "Pro" : "Free"}
+          </span>
+        </span>
+      </div>
+
+      {account.isPro && renews && (
+        <div className="cmp">
+          <span>{endingSoon ? "Access ends" : "Renews"}</span>
+          <span className="implied">{fmt(renews)}</span>
+        </div>
+      )}
+
+      {inDunning && (
+        <p className="fine" style={{color:"var(--rust)", margin:"8px 0 0"}}>
+          Your last payment didn't go through. Stripe will retry it — update your
+          card in the billing portal to avoid losing Pro.
+        </p>
+      )}
+
+      {err && <div className="msg msg-err" style={{margin:"10px 0 0"}}>{err}</div>}
+
+      <div style={{display:"flex", gap:10, flexWrap:"wrap", marginTop:12}}>
+        {account.isPro || hasBillingHistory ? (
+          <button className="btn" onClick={() => go("billing-portal")} disabled={busy}>
+            {busy ? "Opening…" : "Manage billing"}
+          </button>
+        ) : (
+          <button className="btn btn-flare" onClick={() => go("create-checkout")} disabled={busy}>
+            {busy ? "Opening…" : `Upgrade to Pro — $${PRO_PRICE}/mo`}
+          </button>
+        )}
+      </div>
+
+      <p className="fine" style={{marginTop:10}}>
+        {account.isPro
+          ? "Cancel, change your card or download invoices in the portal. Cancelling keeps Pro until the end of the period you've paid for."
+          : "Payment is handled by Stripe. Card details never touch Stackd."}
+      </p>
+    </div>
+  );
+}
+
 /* Pure so it can be tested without a browser, a session or a database. */
 function computeDevStats(rows, now){
   if(!rows) return null;
@@ -1865,6 +1948,8 @@ function SettingsPopover({ account, sports }){
         <p className="fine" style={{marginTop:0, marginBottom:14}}>
           Opens the board here and pins it to your tiles.
         </p>
+
+        <BillingSection account={account} />
 
         {account.isDev && <DevPanel account={account} />}
 
@@ -3620,7 +3705,28 @@ function BetDetail({ entry, isPro }){
    Deploy stripe-create-checkout as a Supabase Edge Function, then set this URL.
    profiles.plan is written only by the Stripe webhook; the browser can't grant
    itself Pro (column grants in migration 2 enforce that). */
-const CHECKOUT_ENDPOINT = "";
+const FUNCTIONS_BASE = `${SUPABASE_URL}/functions/v1`;
+
+/* Opens a Stripe-hosted page. Both endpoints take the caller's identity from
+   their Supabase JWT rather than anything in the request body, so a client
+   cannot start or manage a subscription belonging to someone else. */
+async function openStripePage(fn){
+  const { data:{ session } } = await sb.auth.getSession();
+  if(!session) throw new Error("Please sign in first.");
+  const res = await fetch(`${FUNCTIONS_BASE}/${fn}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${session.access_token}`,
+    },
+  });
+  let body;
+  try { body = await res.json(); }
+  catch { throw new Error("Billing is unavailable right now. Please try again."); }
+  if(!res.ok || !body.url) throw new Error(body.error || "Billing is unavailable right now.");
+  window.location.href = body.url;
+}
 
 function PricingPage({ account, onSignIn }){
   const [busy, setBusy] = useState(false);
@@ -3628,26 +3734,15 @@ function PricingPage({ account, onSignIn }){
 
   const upgrade = async () => {
     if(!account.signedIn){ onSignIn(); return; }
-    if(!CHECKOUT_ENDPOINT){
-      setMsg("Checkout isn't connected yet — CHECKOUT_ENDPOINT is still empty in the code.");
-      return;
-    }
     setBusy(true); setMsg("");
-    try{
-      const { data:{ session } } = await sb.auth.getSession();
-      const res = await fetch(CHECKOUT_ENDPOINT, {
-        method:"POST",
-        headers:{ "Content-Type":"application/json", Authorization:`Bearer ${session.access_token}` },
-        body: JSON.stringify({ returnUrl: window.location.href }),
-      });
-      const json = await res.json();
-      if(json.url) window.location.href = json.url;
-      else setMsg(json.error || "Checkout didn't start. Try again.");
-    }catch(e){
-      setMsg(e.message);
-    }finally{
-      setBusy(false);
-    }
+    try{ await openStripePage("create-checkout"); }
+    catch(e){ setMsg(e.message); setBusy(false); }
+  };
+
+  const manage = async () => {
+    setBusy(true); setMsg("");
+    try{ await openStripePage("billing-portal"); }
+    catch(e){ setMsg(e.message); setBusy(false); }
   };
 
   return (
@@ -3675,8 +3770,9 @@ function PricingPage({ account, onSignIn }){
             <li data-off="true">Closing line value</li>
             <li data-off="true">Unlimited props</li>
           </ul>
-          <button className="btn" disabled>
-            {account.isPro ? "Manage in billing portal" : "Your plan"}
+          <button className="btn" onClick={account.isPro ? manage : undefined}
+            disabled={!account.isPro || busy}>
+            {account.isPro ? "Manage billing" : "Your plan"}
           </button>
         </div>
 

@@ -28,7 +28,7 @@ grant update (
 -- Reset both counters for a test account (handy while testing the gating):
 -- update public.profiles
 -- set prop_refresh_count = 0, scan_all_count = 0, prop_refresh_date = null
--- where email = 'gvacayrentals@gmail.com';
+-- where email = 'you@example.com';
 
 
 -- ------------------------------------------------------------

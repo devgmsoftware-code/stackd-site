@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="color-scheme" content="light" />
 <meta name="description" content="Stackd compares sportsbook odds across every book in your state, prices your parlay at each one, and tracks how your picks actually performed." />
-<title>Stackd V1.5 — every book, one board</title>
+<title>Stackd V1.5.1 — every book, one board</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23101A33'/%3E%3Crect x='7' y='20' width='9' height='4' rx='1.4' fill='%23FFFFFF' opacity='.45'/%3E%3Crect x='7' y='14' width='14' height='4' rx='1.4' fill='%23FFFFFF' opacity='.7'/%3E%3Crect x='7' y='8' width='19' height='4' rx='1.4' fill='%23FF5A45'/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1032,20 +1032,45 @@ const PRO_PRICE = "9.99";
    more than two hours out, "live" when it isn't). Surfacing that does two
    jobs: it tells people how fresh the prices are, and it makes plain during
    testing whether a refresh spent anything or cost nothing at all. */
-function readFeedMeta(res, prevRemaining){
-  const num = v => { const n = Number(v); return Number.isFinite(n) ? n : null; };
-  const remaining = num(res.headers.get("x-requests-remaining"));
-  /* Credits bill as markets x regions, so one board read can cost several.
-     Diffing the counter is the only honest measure of what a refresh cost. */
-  const spent = (prevRemaining !== null && remaining !== null && prevRemaining >= remaining)
-    ? prevRemaining - remaining
-    : null;
+/* Credits bill as markets x regions, so one board read can cost several and a
+   scan of eight games is nowhere near eight. Diffing the counter the API
+   returns is the only honest measure of what an action cost, and it has to be
+   shared across the app because the board and the props scan both spend from
+   the same pot. */
+const creditTracker = { remaining: null };
+
+function noteCredits(res, cached){
+  /* A cached response carries whatever credit count was current when it was
+     first fetched. That number is stale, so trusting it would corrupt every
+     later diff — and the honest answer for a cache hit is simply zero. */
+  if(cached) return 0;
+  /* Number(null) is 0, not NaN — so a missing header would read as "zero
+     credits left", report a spend of the entire balance, and poison every
+     later diff. Reject absent values before converting. */
+  const raw = res.headers.get("x-requests-remaining");
+  if(raw === null || raw === "") return null;
+  const n = Number(raw);
+  if(!Number.isFinite(n)) return null;
+  const prev = creditTracker.remaining;
+  creditTracker.remaining = n;
+  return (prev !== null && prev >= n) ? prev - n : null;
+}
+
+function readFeedMeta(res){
+  // Same Number(null) === 0 trap as above: an absent header is unknown, not zero.
+  const num = v => {
+    if(v === null || v === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  const cached = res.headers.get("x-stackd-cache") === "HIT";
+  const spent = noteCredits(res, cached);
   return {
-    cached: res.headers.get("x-stackd-cache") === "HIT",
+    cached,
     tier:   res.headers.get("x-stackd-tier"),
     ttl:    num(res.headers.get("x-stackd-ttl")),
     lead:   num(res.headers.get("x-stackd-lead")),
-    remaining,
+    remaining: creditTracker.remaining,
     spent,
     at: Date.now(),
   };
@@ -1060,6 +1085,36 @@ function humanDuration(seconds){
   if(h < 24) return rm ? `${h}h ${rm}m` : `${h}h`;
   const d = Math.floor(h / 24);
   return `${d}d ${h % 24}h`;
+}
+
+/* What a props scan cost. A scan is many single-event calls rather than one,
+   so the useful summary is how many of them the proxy already had cached —
+   that ratio is what makes repeat searching cheap. */
+function ScanNote({ meta }){
+  if(!meta || !meta.games) return null;
+  const debug = typeof location !== "undefined" && /[?&]debug=1/.test(location.search);
+  const allCached = meta.cached === meta.games;
+  const g = n => `${n} game${n === 1 ? "" : "s"}`;
+
+  return (
+    <p className="feed">
+      <span className="feed-pip" data-state={allCached ? "cached" : "fresh"}>
+        {allCached ? "All from cache" : meta.cached ? `${meta.cached} of ${meta.games} cached` : "Fetched live"}
+      </span>
+      <span>
+        {allCached
+          ? `Scanned ${g(meta.games)} without spending any credits — these prices were already held.`
+          : `Scanned ${g(meta.games)}, ${meta.fresh} fetched fresh. Scanning again within 20 minutes reuses these.`}
+      </span>
+      {debug && (
+        <span className="feed-debug">
+          games={meta.games} cached={meta.cached} fresh={meta.fresh}
+          {meta.spent !== null && ` spent=${meta.spent}`}
+          {meta.remaining !== null && ` left=${meta.remaining}`}
+        </span>
+      )}
+    </p>
+  );
 }
 
 /* How fresh the board is, and whether refreshing it costs anything.
@@ -1624,8 +1679,6 @@ function App(){
   const [error, setError] = useState("");
   const [quota, setQuota] = useState(null);
   const [feedMeta, setFeedMeta] = useState(null);
-  // Previous credit count, kept in a ref so diffing it doesn't trigger renders.
-  const quotaRef = useRef(null);
   const [parlay, setParlay] = useState([]);
   const [stake, setStake] = useState(20);
   const [bookBoosts, setBookBoosts] = useState({});
@@ -1707,11 +1760,8 @@ function App(){
     setLoading(true); setError("");
     try{
       const res = await fetch(`${ODDS_BASE}/v4/sports/${sportKey}/odds/?regions=us,us2&markets=${marketsFor(sportKey)}&oddsFormat=american`);
-      const meta = readFeedMeta(res, quotaRef.current);
-      if(meta.remaining !== null){
-        setQuota(String(meta.remaining));
-        quotaRef.current = meta.remaining;
-      }
+      const meta = readFeedMeta(res);
+      if(meta.remaining !== null) setQuota(String(meta.remaining));
       setFeedMeta(meta);
       if(!res.ok) throw new Error(await apiError(res));
       setGames(await res.json());
@@ -2011,7 +2061,14 @@ function App(){
 
             <div className="toolbar">
               <div className="searchbar">
+                {/* Chrome on Android autofills a lone text input with the
+                    signed-in email, which silently filters the board to
+                    nothing and puts the user's address on screen. It ignores
+                    autoComplete="off" alone, so the name must also not look
+                    like a credential field. */}
                 <input type="search" value={gameQuery} placeholder="Search teams or games"
+                  name="game-filter" autoComplete="off" autoCorrect="off"
+                  autoCapitalize="none" spellCheck="false" data-form-type="other"
                   onChange={e => setGameQuery(e.target.value)} aria-label="Search games" />
                 {gameQuery && (
                   <button className="searchclear" onClick={() => setGameQuery("")}
@@ -2714,6 +2771,7 @@ function PlayerSearch({ account, sports, sportKey, onPickSport, homeState,
   const [results, setResults] = useState(null);
   const [err, setErr] = useState("");
   const [diag, setDiag] = useState([]);
+  const [scanMeta, setScanMeta] = useState(null);
   const [gameLimit, setGameLimit] = useState(5);
   const [picked, setPicked] = useState([]);
   const [events, setEvents] = useState([]);
@@ -2813,9 +2871,13 @@ function PlayerSearch({ account, sports, sportKey, onPickSport, homeState,
     }
 
     setScanning(mode); setErr(""); setResults(null); setDiag([]);
+    setScanMeta(null);
     const rows = [], log = [];
     const marketParam = picked.join(",");
     let okCount = 0;
+    /* A scan is many single-event calls, so the useful summary isn't one
+       cache state but how many of them had to be paid for. */
+    let nCached = 0, nFresh = 0, nSpent = 0, sawSpend = false;
 
     try{
       for(const g of candidates){
@@ -2829,6 +2891,11 @@ function PlayerSearch({ account, sports, sportKey, onPickSport, homeState,
           log.push({ matchup, ok:false, note:`couldn't reach the API — ${netErr.message}` });
           continue;
         }
+
+        const wasCached = res.headers.get("x-stackd-cache") === "HIT";
+        const spentHere = noteCredits(res, wasCached);
+        if(wasCached) nCached++; else nFresh++;
+        if(spentHere !== null){ nSpent += spentHere; sawSpend = true; }
 
         if(!res.ok){
           // Surface what the API actually said instead of hiding it.
@@ -2887,6 +2954,14 @@ function PlayerSearch({ account, sports, sportKey, onPickSport, homeState,
       if(!isPro) await account.consumePropRefresh(mode === "all" ? "scan" : "game");
       setDiag(log);
       setResults({ q, rows });
+      setScanMeta({
+        games: nCached + nFresh,
+        cached: nCached,
+        fresh: nFresh,
+        spent: sawSpend ? nSpent : null,
+        remaining: creditTracker.remaining,
+        at: Date.now(),
+      });
 
       if(rows.length === 0){
         if(okCount === 0){
@@ -2922,7 +2997,10 @@ function PlayerSearch({ account, sports, sportKey, onPickSport, homeState,
           {propSports.map(s => <option key={s.key} value={s.key}>{sportLabel(s)}</option>)}
         </select>
         <div className="searchbar">
+          {/* Same autofill guard as the board search — see the note there. */}
           <input type="search" value={query} placeholder="Player or team — e.g. Josh Allen, or Chiefs"
+            name="player-filter" autoComplete="off" autoCorrect="off"
+            autoCapitalize="none" spellCheck="false" data-form-type="other"
             onChange={e => setQuery(e.target.value)}
             onKeyDown={e => { if(e.key === "Enter") runScan("query"); }}
             aria-label="Search for a player or game" />
@@ -2995,6 +3073,7 @@ function PlayerSearch({ account, sports, sportKey, onPickSport, homeState,
 
           {err && <div className="alert"><span aria-hidden="true">⚠</span><span>{err}</span></div>}
           {scanning && <div className="blank">Checking {candidates.length} {leagueName} game{candidates.length === 1 ? "" : "s"} for prop markets…</div>}
+          {!scanning && <ScanNote meta={scanMeta} />}
 
           {results?.rows.map((r,i) => (
             <div className="game" key={i} style={{padding:"15px 17px"}}>

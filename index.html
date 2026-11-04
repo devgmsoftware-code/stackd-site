@@ -5,7 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="color-scheme" content="light" />
 <meta name="description" content="Stackd compares sportsbook odds across every book in your state, prices your parlay at each one, and tracks how your picks actually performed." />
-<title>Stackd V1.8 — every book, one board</title>
+<title>Stackd — every book, one board</title>
+<!-- Build identifier. Kept out of the title and out of any og:/description
+     tag so it never appears in a browser tab or a shared link preview, but
+     still readable from view-source to confirm which build is live without
+     signing in. The Diagnostics panel shows the same value. -->
+<meta name="app-version" content="1.9" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23101A33'/%3E%3Crect x='7' y='20' width='9' height='4' rx='1.4' fill='%23FFFFFF' opacity='.45'/%3E%3Crect x='7' y='14' width='14' height='4' rx='1.4' fill='%23FFFFFF' opacity='.7'/%3E%3Crect x='7' y='8' width='19' height='4' rx='1.4' fill='%23FF5A45'/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1158,6 +1163,9 @@ function ReferralPanel({ account }){
 
   const code = account.profile?.referral_code || null;
   const credits = account.profile?.referral_credit_months ?? 0;
+  const earned = account.profile?.referral_months_earned ?? 0;
+  const REFERRAL_CAP = 3;              // lifetime, enforced in the database
+  const atCap = earned >= REFERRAL_CAP;
   const link = code ? `https://stackdpicks.com/?ref=${code}` : "";
 
   useEffect(() => {
@@ -1196,8 +1204,8 @@ function ReferralPanel({ account }){
 
       <p className="fine" style={{margin:"0 0 12px"}}>
         Send this link. When someone signs up with it and their first payment
-        goes through, you get a free month — applied automatically, with no
-        limit on how many you can earn.
+        goes through, you get a free month and they get <b>$5 off</b> their
+        first month. Up to {REFERRAL_CAP} free months in total.
       </p>
 
       <div className="reflink">
@@ -1216,6 +1224,8 @@ function ReferralPanel({ account }){
 
       <div style={{marginTop:14}}>
         <div className="cmp"><span>Free months earned</span>
+          <span className="implied">{earned} of {REFERRAL_CAP}</span></div>
+        <div className="cmp"><span>Unused</span>
           <span className="implied">{credits}</span></div>
         <div className="cmp"><span>Friends paying</span>
           <span className="implied">{rows === null ? "…" : paying}</span></div>
@@ -1231,9 +1241,18 @@ function ReferralPanel({ account }){
         </p>
       )}
 
+      {atCap && (
+        <p className="fine" style={{marginTop:10}}>
+          You've earned all {REFERRAL_CAP} free months. Keep sharing if you
+          like — your friends still get their $5 — but no further months are
+          added.
+        </p>
+      )}
+
       <p className="fine" style={{marginTop:10}}>
         A friend has to be a new account and use the link when they sign up.
-        Referring yourself doesn't work.
+        Referring yourself doesn't work, and a month is reversed if the
+        payment behind it is refunded or charged back.
       </p>
     </div>
   );
@@ -1349,6 +1368,9 @@ function computeDevStats(rows, now){
   };
 }
 
+const APP_VERSION = (typeof document !== "undefined"
+  && document.querySelector('meta[name="app-version"]')?.content) || "dev";
+
 function DevPanel({ account }){
   const [usage, setUsage] = useState(null);
   const [rows, setRows] = useState(null);
@@ -1394,6 +1416,9 @@ function DevPanel({ account }){
       </div>
 
       {err && <div className="msg msg-err" style={{marginBottom:10}}>{err}</div>}
+
+      <div className="devsec">Build</div>
+      <Row k="App version" v={APP_VERSION} />
 
       <div className="devsec">Odds feed — account-wide</div>
       {usage && usage.ok ? (

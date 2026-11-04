@@ -966,7 +966,7 @@ function exportLedgerCSV(ledger, username){
 /* The SITE is served from stackd.dev-gm-software.workers.dev (static assets).
    The odds PROXY is a separate code Worker — a static-assets Worker can't run
    code, so the two can't share one deployment without a wrangler setup. */
-const ODDS_BASE = "https://stackd-api.dev-gm-software.workers.dev";
+const ODDS_BASE = "https://api.stackdpicks.com";
 
 /* The Odds API answers 401 for BOTH an invalid key and an exhausted quota, so
    the status code alone can't tell you which — V0.99 guessed "key rejected"

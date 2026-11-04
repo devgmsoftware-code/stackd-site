@@ -3,7 +3,7 @@
 Sportsbook odds comparison — compares a pick across US-legal books and finds
 the best book to parlay picks together across different books.
 
-**Live:** https://stackd.dev-gm-software.workers.dev
+**Live:** https://stackdpicks.com
 
 ## Layout
 
@@ -50,7 +50,7 @@ being cached as a blank screen.
 
 **stackd-api** (odds proxy)
 - `ODDS_API_KEY` (secret)
-- `ALLOWED_ORIGINS` (text) — the site origin
+- `ALLOWED_ORIGINS` (text) — site origins, comma separated
 
 ## Known gaps
 

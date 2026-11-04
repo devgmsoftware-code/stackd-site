@@ -1,0 +1,3377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="color-scheme" content="light" />
+<meta name="description" content="Stackd compares sportsbook odds across every book in your state, prices your parlay at each one, and tracks how your picks actually performed." />
+<title>Stackd V1.3 — every book, one board</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23101A33'/%3E%3Crect x='7' y='20' width='9' height='4' rx='1.4' fill='%23FFFFFF' opacity='.45'/%3E%3Crect x='7' y='14' width='14' height='4' rx='1.4' fill='%23FFFFFF' opacity='.7'/%3E%3Crect x='7' y='8' width='19' height='4' rx='1.4' fill='%23FF5A45'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..900&family=Instrument+Sans:wght@400..700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+@layer tokens, base, layout, brand, components, utilities;
+
+@layer tokens {
+  @property --ticker-shift { syntax: '<length>'; inherits: false; initial-value: 0px; }
+
+  :root{
+    /* Coral is reserved for one meaning only: this is the best available price. */
+    --ink:      #101A33;
+    --ink-soft: #1B2A4A;
+    --flare:    #FF5A45;
+    --paper:    #F4F6FA;
+    --card:     #FFFFFF;
+    --slate:    #5C6B85;
+    --slate-lo: #8B97AC;
+    --line:     #DDE3ED;
+    --mint:     #12B981;
+    --rust:     #C23B2A;
+    --gold:     #B8730A;
+
+    --tint-flare: color-mix(in srgb, var(--flare) 10%, transparent);
+    --tint-mint:  color-mix(in srgb, var(--mint) 12%, transparent);
+    --tint-rust:  color-mix(in srgb, var(--rust) 9%, transparent);
+    --tint-gold:  color-mix(in srgb, var(--gold) 11%, transparent);
+
+    --display: 'Archivo', system-ui, sans-serif;
+    --body:    'Instrument Sans', system-ui, sans-serif;
+    --data:    'DM Mono', ui-monospace, monospace;
+
+    --r-card: 12px;
+    --r-ctl:  7px;
+
+    --sh-card: 0 1px 2px rgb(16 26 51 / .04), 0 10px 28px -16px rgb(16 26 51 / .16);
+    --sh-pop:  0 2px 6px rgb(16 26 51 / .08), 0 24px 56px -20px rgb(16 26 51 / .34);
+
+    --gut: clamp(16px, 4vw, 28px);
+    --max: 1140px;
+  }
+}
+
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html { scrollbar-gutter: stable; }
+
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:var(--body); font-size:15px; line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  h1,h2,h3,h4{ font-family:var(--display); margin:0; text-wrap:balance; letter-spacing:-.02em; }
+
+  button{ font-family:inherit; cursor:pointer; }
+
+  input, select{
+    font-family:inherit; font-size:14px; color:var(--ink);
+    background:var(--paper); border:1px solid var(--line);
+    border-radius:var(--r-ctl); padding:9px 11px;
+
+    &:focus-visible{ outline:2px solid var(--ink); outline-offset:1px; border-color:var(--ink); }
+  }
+
+  :is(button, a, summary, [tabindex]):focus-visible{
+    outline:2px solid var(--flare); outline-offset:2px; border-radius:4px;
+  }
+
+  ::selection{ background:var(--tint-flare); }
+
+  ::-webkit-scrollbar{ width:9px; height:9px; }
+  ::-webkit-scrollbar-thumb{ background:var(--line); border-radius:5px; }
+
+  @media (prefers-reduced-motion: reduce){
+    *, *::before, *::after{ animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; }
+  }
+}
+
+@layer layout {
+  .shell{ max-width:var(--max); margin:0 auto; padding-inline:var(--gut); }
+
+  main{ padding-block:32px 200px; }
+
+  .stack-lg > * + *{ margin-top:28px; }
+}
+
+/* ---------- brand: masthead, logo, ticker, footer ---------- */
+@layer brand {
+  .masthead{
+    background:var(--ink);
+    color:#fff;
+    position:sticky; top:0; z-index:40;
+    box-shadow:0 1px 0 rgb(255 255 255 / .06), 0 6px 24px -12px rgb(16 26 51 / .5);
+  }
+
+  .masthead-row{
+    display:flex; align-items:center; justify-content:space-between;
+    gap:20px; padding-block:15px; flex-wrap:wrap;
+  }
+
+  .brandmark{
+    display:flex; align-items:center; gap:11px;
+    text-decoration:none; color:#fff; flex-shrink:0;
+  }
+  .brandmark svg{ display:block; }
+  .wordmark{
+    font-family:var(--display);
+    font-variation-settings:'wdth' 112;
+    font-weight:800; font-size:23px; letter-spacing:-.035em;
+    line-height:1;
+  }
+  .wordmark i{ color:var(--flare); font-style:normal; }
+  .tagline{
+    font-size:10px; text-transform:uppercase; letter-spacing:.16em;
+    color:rgb(255 255 255 / .42); font-weight:600; margin-top:3px;
+  }
+
+  .mast-nav{ display:flex; gap:2px; flex-wrap:wrap; }
+  .mast-nav button{
+    background:none; border:none; color:rgb(255 255 255 / .58);
+    font-size:13px; font-weight:600; padding:8px 13px; border-radius:var(--r-ctl);
+    transition:color .16s, background .16s;
+
+    &:hover{ color:#fff; background:rgb(255 255 255 / .07); }
+    &[aria-current="page"]{ color:var(--ink); background:#fff; }
+  }
+
+  .mast-right{ display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+
+  /* --- signature: the line ticker --- */
+  .ticker{
+    border-top:1px solid rgb(255 255 255 / .09);
+    overflow:hidden; position:relative;
+    background:linear-gradient(180deg, rgb(0 0 0 / .18), transparent);
+
+    &::after{
+      content:""; position:absolute; inset:0; pointer-events:none;
+      background:linear-gradient(90deg, var(--ink) 0%, transparent 7%, transparent 93%, var(--ink) 100%);
+    }
+    &:hover .ticker-track{ animation-play-state:paused; }
+  }
+  .ticker-track{
+    display:flex; gap:0; width:max-content;
+    animation:ticker-run 64s linear infinite;
+    padding-block:9px;
+  }
+  @keyframes ticker-run{ from{ transform:translateX(0); } to{ transform:translateX(-50%); } }
+
+  .tick{
+    display:inline-flex; align-items:baseline; gap:7px;
+    padding-inline:16px; white-space:nowrap;
+    border-right:1px solid rgb(255 255 255 / .08);
+  }
+  .tick-team{
+    font-size:10.5px; font-weight:600; letter-spacing:.1em; text-transform:uppercase;
+    color:rgb(255 255 255 / .5);
+  }
+  .tick-price{
+    font-family:var(--data); font-variant-numeric:tabular-nums;
+    font-size:12.5px; font-weight:500; color:#fff;
+  }
+  .tick-price.up{ color:var(--flare); }
+  .tick-book{ font-size:9.5px; color:rgb(255 255 255 / .3); letter-spacing:.06em; text-transform:uppercase; }
+
+  .ticker-idle{
+    padding-block:9px; font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+    color:rgb(255 255 255 / .3); font-weight:600;
+  }
+
+  /* --- page masthead for editorial pages --- */
+  .page-head{ padding-block:14px 34px; border-bottom:1px solid var(--line); margin-bottom:34px; }
+  .eyebrow{
+    font-size:10.5px; font-weight:700; letter-spacing:.17em; text-transform:uppercase;
+    color:var(--flare); margin-bottom:14px;
+  }
+  .page-title{
+    font-variation-settings:'wdth' 108;
+    font-weight:900; font-size:clamp(2.3rem, 6.2vw, 3.9rem);
+    line-height:.96; letter-spacing:-.038em; margin-bottom:16px;
+  }
+  .page-lede{
+    font-size:clamp(1rem, 2.1vw, 1.15rem); line-height:1.62; color:var(--slate);
+    max-width:63ch;
+  }
+
+  .site-foot{
+    border-top:1px solid var(--line); background:var(--ink); color:rgb(255 255 255 / .62);
+    padding-block:38px 46px; margin-top:64px;
+  }
+  .foot-grid{ display:flex; justify-content:space-between; gap:34px; flex-wrap:wrap; }
+  .foot-legal{ font-size:11.5px; line-height:1.85; max-width:56ch; }
+  .foot-legal strong{ color:rgb(255 255 255 / .88); font-weight:600; }
+  .foot-21{
+    display:inline-flex; align-items:center; gap:8px; margin-top:14px;
+    font-size:11px; letter-spacing:.05em;
+    border:1px solid rgb(255 255 255 / .18); border-radius:999px; padding:5px 12px;
+    color:rgb(255 255 255 / .8);
+  }
+  .foot-21 b{ font-family:var(--display); font-weight:800; }
+}
+
+@layer components {
+  /* --- controls --- */
+  .toolbar{ display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-bottom:14px; }
+
+  /* --- differentiator banner --- */
+  .pitch{
+    background:var(--card); border:1px solid var(--line); border-left:3px solid var(--flare);
+    border-radius:var(--r-card); padding:15px 18px; margin-bottom:18px;
+  }
+  .pitch h2{ font-size:15px; font-weight:800; margin-bottom:5px; }
+  .pitch p{ margin:0; font-size:13.5px; line-height:1.6; color:var(--slate); }
+  .pitch b{ color:var(--ink); font-weight:600; }
+
+  /* --- search --- */
+  .searchbar{ position:relative; flex:1; min-width:180px; }
+  .searchbar input{ width:100%; padding-left:32px; }
+  .searchbar::before{
+    content:"⌕"; position:absolute; left:11px; top:50%; transform:translateY(-50%);
+    color:var(--slate-lo); font-size:15px; pointer-events:none;
+  }
+  .searchclear{
+    position:absolute; right:8px; top:50%; transform:translateY(-50%);
+    background:none; border:none; color:var(--slate-lo); font-size:15px; line-height:1; padding:3px;
+    &:hover{ color:var(--ink); }
+  }
+
+  .depth{
+    font-family:var(--body); font-size:10px; font-weight:600; letter-spacing:.04em;
+    text-transform:none; color:var(--slate-lo); margin-left:9px;
+  }
+
+  /* --- player search scan controls --- */
+  .scan-setup{
+    background:var(--card); border:1px solid var(--line); border-radius:var(--r-card);
+    padding:14px 16px; margin-bottom:14px;
+  }
+  .scan-row{ display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin-top:10px; }
+  .scan-row label{ font-size:12px; font-weight:600; color:var(--slate); }
+  .scan-row select{ padding:6px 26px 6px 9px; font-size:12.5px; }
+  .scan-note{ font-size:11.5px; color:var(--slate-lo); }
+
+  /* --- player search --- */
+  .psearch-hit{
+    background:var(--card); border:1px solid var(--line); border-radius:var(--r-ctl);
+    padding:10px 13px; margin-bottom:7px; display:flex; justify-content:space-between;
+    gap:10px; align-items:center; width:100%; text-align:left;
+    &:hover{ border-color:var(--ink); }
+  }
+  .psearch-hit .nm{ font-size:13.5px; font-weight:600; }
+  .psearch-hit .ctx{ font-size:11.5px; color:var(--slate); }
+  .implied{
+    font-family:var(--data); font-size:11.5px; color:var(--slate);
+    font-variant-numeric:tabular-nums;
+  }
+
+  /* --- sport tiles --- */
+  .sportbar{ margin-bottom:15px; }
+  .tiles{ display:flex; gap:8px; flex-wrap:wrap; align-items:stretch; }
+  .tile{
+    position:relative; display:flex; flex-direction:column; gap:2px; align-items:flex-start;
+    background:var(--card); border:1px solid var(--line); border-radius:10px;
+    padding:9px 14px 9px 12px; min-width:78px;
+    transition:border-color .15s, background .15s, transform .12s;
+
+    &:hover{ border-color:var(--ink); }
+    &[aria-pressed="true"]{ background:var(--ink); border-color:var(--ink); color:#fff; }
+  }
+  .tile-name{ font-family:var(--display); font-weight:800; font-size:14px; letter-spacing:-.01em; }
+  .tile-sub{ font-size:9.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--slate-lo); }
+  .tile[aria-pressed="true"] .tile-sub{ color:rgb(255 255 255 / .5); }
+  .fav-star{
+    position:absolute; top:5px; right:6px; line-height:1;
+    background:none; border:none; padding:2px; font-size:11px;
+    color:var(--slate-lo); opacity:.55; transition:opacity .15s, color .15s;
+    &:hover{ opacity:1; color:var(--flare); }
+    &[data-on="true"]{ opacity:1; color:var(--flare); }
+  }
+  .tile[aria-pressed="true"] .fav-star{ color:rgb(255 255 255 / .5); }
+  .tile[aria-pressed="true"] .fav-star[data-on="true"]{ color:var(--flare); }
+  .tile-more{
+    background:var(--paper); border:1px dashed var(--line); border-radius:10px;
+    padding:9px 14px; font-size:12.5px; font-weight:600; color:var(--slate);
+    &:hover{ border-color:var(--ink); color:var(--ink); }
+  }
+  .tile-drawer{
+    margin-top:9px; padding:12px; border:1px solid var(--line); border-radius:10px;
+    background:var(--card); display:flex; gap:7px; flex-wrap:wrap;
+  }
+  .quota-line{
+    font-size:11.5px; color:var(--slate); display:flex; align-items:center; gap:7px;
+    margin:0 0 10px;
+  }
+  .quota-pip{ display:inline-flex; gap:3px; }
+  .quota-pip i{ width:7px; height:7px; border-radius:50%; background:var(--line); display:block; }
+  .quota-pip i[data-used="false"]{ background:var(--flare); }
+
+  .seg{ display:flex; background:var(--card); border:1px solid var(--line); border-radius:var(--r-ctl); padding:2px; }
+  .seg button{
+    background:none; border:none; color:var(--slate);
+    font-size:12.5px; font-weight:600; padding:7px 13px; border-radius:5px;
+    transition:background .15s, color .15s;
+
+    &:hover{ color:var(--ink); }
+    &[aria-pressed="true"]{ background:var(--ink); color:#fff; }
+  }
+
+  .btn{
+    display:inline-flex; align-items:center; gap:7px;
+    font-size:12.5px; font-weight:600; padding:8px 14px;
+    border-radius:var(--r-ctl); border:1px solid var(--line);
+    background:var(--card); color:var(--ink);
+    transition:border-color .15s, background .15s;
+
+    &:hover:not(:disabled){ border-color:var(--ink); }
+    &:disabled{ opacity:.42; cursor:default; }
+  }
+  .btn-solid{
+    background:var(--ink); color:#fff; border-color:var(--ink);
+    &:hover:not(:disabled){ background:#1e2c4d; }
+  }
+  .btn-flare{
+    background:var(--flare); color:#fff; border-color:var(--flare);
+    &:hover:not(:disabled){ filter:brightness(1.07); }
+  }
+
+  .select-native{ appearance:none; padding-right:30px;
+    background-image:linear-gradient(45deg, transparent 50%, var(--slate) 50%), linear-gradient(135deg, var(--slate) 50%, transparent 50%);
+    background-position:calc(100% - 15px) center, calc(100% - 10px) center;
+    background-size:5px 5px, 5px 5px; background-repeat:no-repeat;
+  }
+
+  .note{ font-size:12.5px; color:var(--slate); margin:0 0 16px; line-height:1.6; }
+  .note strong{ color:var(--ink); font-weight:600; }
+
+  .alert{
+    display:flex; gap:9px; align-items:flex-start;
+    background:var(--tint-rust); border:1px solid color-mix(in srgb, var(--rust) 30%, transparent);
+    color:var(--rust); font-size:13.5px; border-radius:var(--r-ctl); padding:11px 13px; margin-bottom:18px;
+  }
+  .blank{
+    text-align:center; color:var(--slate); font-size:14px; padding:56px 20px;
+    border:1px dashed var(--line); border-radius:var(--r-card); background:color-mix(in srgb, var(--card) 60%, transparent);
+  }
+
+  /* --- day divider --- */
+  .daybar{ display:flex; align-items:center; gap:13px; margin:30px 0 12px;
+    &:first-of-type{ margin-top:0; }
+  }
+  .daybar span{
+    font-family:var(--display); font-weight:800; font-size:13px;
+    letter-spacing:.02em; white-space:nowrap;
+  }
+  .daybar i{ flex:1; height:1px; background:var(--line); }
+  .daybar em{
+    font-style:normal; font-family:var(--data); font-size:11px; color:var(--slate-lo);
+    font-variant-numeric:tabular-nums;
+  }
+
+  /* --- game card --- */
+  .game{
+    container-type:inline-size;
+    content-visibility:auto; contain-intrinsic-size:auto 180px;
+    background:var(--card); border:1px solid var(--line); border-radius:var(--r-card);
+    box-shadow:var(--sh-card); margin-bottom:12px; overflow:clip;
+    transition:border-color .18s, box-shadow .18s;
+
+    &:has(details[open]){ border-color:color-mix(in srgb, var(--ink) 24%, var(--line)); }
+  }
+
+  .game-top{ display:flex; align-items:flex-start; justify-content:space-between; gap:14px; padding:15px 17px 0; }
+  .matchup{ font-size:16.5px; font-weight:800; letter-spacing:-.025em; line-height:1.25; }
+  .matchup i{ font-style:normal; color:var(--slate-lo); font-weight:500; padding-inline:3px; }
+  .when{ text-align:right; flex-shrink:0; }
+  .when time{ font-family:var(--data); font-size:12px; color:var(--slate); font-variant-numeric:tabular-nums; }
+  .livetag{
+    display:flex; align-items:center; justify-content:flex-end; gap:5px;
+    font-size:9.5px; font-weight:700; letter-spacing:.13em; text-transform:uppercase; color:var(--rust);
+    &::before{ content:""; width:6px; height:6px; border-radius:50%; background:var(--rust); animation:pulse 1.6s ease-in-out infinite; }
+  }
+  @keyframes pulse{ 50%{ opacity:.25; } }
+
+  /* the primary scannable object: best moneyline per side */
+  .prices{ display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:9px; padding:13px 17px 15px; }
+  @container (max-width: 380px){ .prices{ grid-template-columns:1fr; } }
+
+  .price{
+    border:1px solid var(--line); border-radius:9px; padding:10px 12px;
+    background:color-mix(in srgb, var(--paper) 55%, transparent);
+    display:flex; flex-direction:column; gap:1px; position:relative;
+
+    &[data-best="true"]{
+      border-color:color-mix(in srgb, var(--flare) 45%, transparent);
+      background:var(--tint-flare);
+    }
+  }
+  .price-team{ font-size:12.5px; font-weight:600; color:var(--slate); letter-spacing:-.01em; }
+  .price-num{
+    font-family:var(--data); font-variant-numeric:tabular-nums;
+    font-size:25px; font-weight:500; letter-spacing:-.03em; line-height:1.15;
+  }
+  .price[data-best="true"] .price-num{ color:var(--flare); }
+  .price-book{ font-size:10.5px; color:var(--slate-lo); letter-spacing:.04em; }
+  .best-flag{
+    position:absolute; top:9px; right:10px;
+    font-size:8.5px; font-weight:800; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--flare);
+  }
+
+  /* native disclosure for the deep view */
+  .game details{ border-top:1px solid var(--line); }
+  .game summary{
+    list-style:none; cursor:pointer; padding:11px 17px;
+    font-size:12px; font-weight:600; color:var(--slate);
+    display:flex; align-items:center; gap:8px;
+    transition:background .15s, color .15s;
+
+    &::-webkit-details-marker{ display:none; }
+    &:hover{ background:var(--paper); color:var(--ink); }
+  }
+  .game summary::before{
+    content:"+"; font-family:var(--data); font-size:14px; line-height:1;
+    width:17px; height:17px; display:grid; place-items:center;
+    border:1px solid var(--line); border-radius:4px; color:var(--ink);
+  }
+  .game details[open] summary::before{ content:"–"; }
+  .deep{ padding:4px 17px 19px; }
+
+  /* --- market tables --- */
+  .market + .market{ margin-top:20px; }
+  .market-h{
+    font-size:10.5px; font-weight:700; letter-spacing:.15em; text-transform:uppercase;
+    color:var(--slate-lo); margin-bottom:7px;
+  }
+  .tablewrap{ overflow-x:auto; }
+  table{ width:100%; border-collapse:collapse; }
+  thead th{
+    text-align:left; font-size:10px; font-weight:700; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--slate-lo); padding:5px 9px; white-space:nowrap;
+  }
+  tbody tr{ border-top:1px solid color-mix(in srgb, var(--line) 65%, transparent); }
+  tbody td{ padding:6px 9px; }
+  .bookcell{ font-size:13px; font-weight:600; white-space:nowrap; }
+
+  .odds{
+    background:none; border:1px solid transparent; border-radius:5px;
+    font-family:var(--data); font-variant-numeric:tabular-nums;
+    font-size:13.5px; font-weight:500; color:var(--ink);
+    padding:4px 8px; transition:background .13s, border-color .13s;
+
+    &:hover{ background:var(--paper); border-color:var(--line); }
+    &[data-best="true"]{ background:var(--tint-flare); color:var(--flare); font-weight:500; }
+    &[data-picked="true"]{ border-color:var(--gold); }
+  }
+  .nil{ color:color-mix(in srgb, var(--slate-lo) 55%, transparent); font-family:var(--data); font-size:13px; }
+
+  .locked{
+    font-size:12.5px; color:var(--slate); line-height:1.6;
+    background:var(--paper); border:1px dashed var(--line); border-radius:var(--r-ctl); padding:11px 13px;
+  }
+  .chipset{ display:flex; gap:7px; flex-wrap:wrap; margin-bottom:11px; }
+  .chip{
+    font-size:12px; font-weight:600; padding:6px 11px; border-radius:999px;
+    border:1px solid var(--line); background:var(--card); color:var(--slate);
+    &:hover{ border-color:var(--ink); color:var(--ink); }
+    &[aria-pressed="true"]{ background:var(--ink); color:#fff; border-color:var(--ink); }
+  }
+
+  /* --- parlay tray --- */
+  .tray-toggle{
+    background:none; border:1px solid var(--line); border-radius:var(--r-ctl);
+    color:var(--slate); font-size:12px; font-weight:600; padding:5px 11px;
+    display:inline-flex; align-items:center; gap:6px;
+    &:hover{ border-color:var(--ink); color:var(--ink); }
+  }
+  .tray[data-collapsed="true"]{ max-height:none; }
+  .tray-peek{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:12px 0;
+  }
+  .tray-peek-left{ display:flex; align-items:center; gap:10px; min-width:0; }
+  .tray-peek h3{ margin:0; font-size:15px; font-weight:800; white-space:nowrap; }
+  .tray-peek .best{
+    font-family:var(--data); font-variant-numeric:tabular-nums; font-size:13px;
+    color:var(--slate); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  @media (max-width: 720px){
+    .tray{ max-height:72vh; }
+    .tray-peek h3{ font-size:14px; }
+  }
+
+  .tray{
+    position:fixed; inset-inline:0; bottom:0; z-index:35;
+    background:var(--card); border-top:1px solid var(--line);
+    box-shadow:0 -10px 40px -14px rgb(16 26 51 / .28);
+    max-height:60vh; overflow-y:auto;
+  }
+  .tray-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .tray-head h3{ font-size:17px; font-weight:800; display:flex; align-items:center; gap:9px; }
+  .tray-count{
+    font-family:var(--data); font-size:11px; font-weight:500;
+    background:var(--ink); color:#fff; border-radius:999px; padding:2px 8px;
+  }
+  .legs{ display:flex; gap:7px; flex-wrap:wrap; margin:13px 0 15px; }
+  .leg{
+    display:inline-flex; align-items:center; gap:8px;
+    background:var(--paper); border:1px solid var(--line); border-radius:999px;
+    padding:5px 6px 5px 13px; font-size:12px;
+  }
+  .leg b{ font-weight:600; }
+  .leg span{ color:var(--slate); }
+  .leg em{ font-style:normal; font-family:var(--data); font-size:11px; color:var(--gold); }
+  .leg button{
+    background:none; border:none; color:var(--slate); line-height:1;
+    padding:3px 6px; border-radius:999px; font-size:14px;
+    &:hover{ background:var(--line); color:var(--ink); }
+  }
+
+  .quote{
+    border:1px solid var(--line); border-radius:9px; background:var(--paper);
+    padding:11px 13px; margin-bottom:8px;
+    display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;
+
+    &[data-winner="true"]{ border-color:color-mix(in srgb, var(--flare) 42%, transparent); background:var(--tint-flare); }
+    &[data-partial="true"]{ border-color:color-mix(in srgb, var(--gold) 34%, transparent); background:var(--tint-gold); }
+  }
+  .quote-book{ display:flex; align-items:center; gap:9px; font-size:14px; font-weight:600; flex-wrap:wrap; }
+  .flag{
+    font-size:8.5px; font-weight:800; letter-spacing:.11em; text-transform:uppercase;
+    padding:3px 7px; border-radius:4px; background:var(--flare); color:#fff;
+  }
+  .quote-odds{ font-family:var(--data); font-size:12px; color:var(--slate); font-variant-numeric:tabular-nums; }
+  .quote-right{ display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  .boost{ display:flex; align-items:center; gap:6px; font-size:11px; color:var(--slate); }
+  .boost input{ width:58px; padding:5px 7px; font-size:12px; font-family:var(--data); }
+  .payout{
+    font-family:var(--data); font-variant-numeric:tabular-nums;
+    font-size:17px; font-weight:500; letter-spacing:-.02em;
+  }
+  .payout small{ font-family:var(--body); font-size:10.5px; color:var(--slate); letter-spacing:.05em; text-transform:uppercase; margin-left:5px; }
+
+  /* --- dashboard --- */
+  .stats{ display:grid; grid-template-columns:repeat(auto-fit, minmax(158px, 1fr)); gap:11px; margin-bottom:26px; }
+  .stat{
+    background:var(--card); border:1px solid var(--line); border-radius:var(--r-card);
+    padding:15px 17px;
+  }
+  .stat dt{
+    font-size:10px; font-weight:700; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--slate-lo); margin-bottom:6px;
+  }
+  .stat dd{
+    margin:0; font-family:var(--data); font-variant-numeric:tabular-nums;
+    font-size:26px; font-weight:500; letter-spacing:-.035em; line-height:1;
+  }
+  .pos{ color:var(--mint); } .neg{ color:var(--rust); }
+
+  .rowbar{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
+  .section-h{ font-family:var(--display); font-weight:800; font-size:14px; letter-spacing:.01em; margin:26px 0 10px; }
+
+  .bet{
+    background:var(--card); border:1px solid var(--line); border-radius:var(--r-card);
+    padding:15px 17px; margin-bottom:10px;
+  }
+  .bet-top{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  .bet-book{ font-size:14.5px; font-weight:700; }
+  .bet-odds{ font-family:var(--data); font-size:12.5px; color:var(--slate); font-variant-numeric:tabular-nums; }
+  .bet-boost{ font-size:11px; color:var(--gold); font-weight:600; }
+  .state{
+    font-size:9.5px; font-weight:800; letter-spacing:.12em; text-transform:uppercase;
+    padding:4px 9px; border-radius:999px;
+    &[data-s="pending"]{ background:var(--tint-gold); color:var(--gold); }
+    &[data-s="won"]{ background:var(--tint-mint); color:var(--mint); }
+    &[data-s="lost"]{ background:var(--tint-rust); color:var(--rust); }
+    &[data-s="push"]{ background:var(--paper); color:var(--slate); }
+  }
+  .bet-legs{ font-size:12.5px; color:var(--slate); margin-top:8px; line-height:1.75; }
+  .bet-legs em{ font-style:normal; color:var(--gold); }
+  .bet-money{ display:flex; align-items:center; justify-content:space-between; gap:11px; flex-wrap:wrap; margin-top:10px; }
+  .bet-money span{ font-family:var(--data); font-size:12.5px; font-variant-numeric:tabular-nums; }
+  .linkish{
+    background:none; border:none; color:var(--slate); font-size:11.5px; font-weight:600;
+    text-decoration:underline; text-underline-offset:2px; padding:0;
+    &:hover{ color:var(--ink); }
+  }
+  .settle{ display:flex; gap:7px; flex-wrap:wrap; margin-top:12px; }
+  .settle button{
+    font-size:11.5px; font-weight:600; padding:6px 12px; border-radius:var(--r-ctl);
+    border:1px solid var(--line); background:var(--paper); color:var(--slate);
+    &:hover{ color:var(--ink); border-color:var(--ink); }
+  }
+  .settle button.w:hover{ color:var(--mint); border-color:var(--mint); }
+  .settle button.l:hover{ color:var(--rust); border-color:var(--rust); }
+
+  .detail{ margin-top:12px; border-top:1px solid var(--line); padding-top:12px; }
+  .cmp{ display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:12.5px; padding:6px 0;
+    & + &{ border-top:1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+  }
+  .cmp b{ font-weight:600; }
+  .cmp .pick{
+    font-size:8.5px; font-weight:800; letter-spacing:.11em; text-transform:uppercase;
+    color:var(--flare); background:var(--tint-flare); padding:2px 6px; border-radius:4px; margin-left:7px;
+  }
+  .fine{ font-size:11px; color:var(--slate-lo); line-height:1.6; margin-top:9px; }
+
+  /* --- ad slot --- */
+  /* --- dialog + popover --- */
+  dialog{
+    border:none; padding:0; background:transparent; max-width:min(94vw, 400px); width:100%;
+    &::backdrop{ background:rgb(16 26 51 / .55); backdrop-filter:blur(3px); }
+  }
+  .sheet{
+    background:var(--card); border-radius:14px; box-shadow:var(--sh-pop);
+    padding:26px 26px 22px; text-align:left;
+  }
+  .sheet h2{ font-size:22px; font-weight:800; margin-bottom:5px; }
+  .sheet .sub{ font-size:13px; color:var(--slate); margin:0 0 18px; }
+  .field{ margin-bottom:10px; }
+  .field label{ display:block; font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--slate); margin-bottom:5px; }
+  .field input, .field select{ width:100%; }
+  .msg{ font-size:12px; margin-bottom:11px; border-radius:5px; padding:8px 10px; }
+  .msg-err{ background:var(--tint-rust); color:var(--rust); }
+  .msg-ok{ background:var(--tint-mint); color:var(--mint); }
+  .terms{
+    background:var(--paper); border:1px solid var(--line); border-radius:var(--r-ctl);
+    padding:11px 12px; max-height:120px; overflow-y:auto;
+    font-size:11px; line-height:1.65; color:var(--slate); margin-bottom:11px;
+  }
+  .agree{ display:flex; gap:9px; align-items:flex-start; font-size:12.5px; margin-bottom:15px; cursor:pointer; }
+  .agree input{ width:auto; margin-top:3px; }
+  .sheet-actions{ display:flex; flex-direction:column; gap:9px; }
+  .sheet-actions .btn{ justify-content:center; padding:11px; font-size:13.5px; }
+
+  [popover]{
+    border:none; padding:0; background:transparent; margin:0;
+    &::backdrop{ background:rgb(16 26 51 / .3); }
+  }
+  .pop{
+    background:var(--card); border:1px solid var(--line); border-radius:12px;
+    box-shadow:var(--sh-pop); padding:20px; width:min(92vw, 310px);
+    position:fixed; top:76px; right:var(--gut);
+  }
+  .pop h3{ font-size:16px; font-weight:800; margin-bottom:4px; }
+
+  .whoami{ display:flex; align-items:center; gap:11px; font-size:13px; color:rgb(255 255 255 / .85); flex-wrap:wrap; }
+  .whoami b{ font-weight:600; }
+  .tier{
+    font-size:9px; font-weight:800; letter-spacing:.12em; text-transform:uppercase;
+    padding:3px 7px; border-radius:4px;
+    &[data-t="pro"]{ background:var(--flare); color:#fff; }
+    &[data-t="free"]{ background:rgb(255 255 255 / .12); color:rgb(255 255 255 / .7); }
+  }
+  .ghost{
+    background:none; border:none; color:rgb(255 255 255 / .5); font-size:11.5px; font-weight:600;
+    text-decoration:underline; text-underline-offset:2px; padding:0;
+    &:hover{ color:#fff; }
+  }
+
+  /* --- pricing --- */
+  .tiers{ display:grid; grid-template-columns:repeat(auto-fit, minmax(272px, 1fr)); gap:16px; }
+  .tier-card{
+    background:var(--card); border:1px solid var(--line); border-radius:16px; padding:26px;
+    display:flex; flex-direction:column;
+
+    &[data-featured="true"]{
+      border-color:var(--ink); box-shadow:var(--sh-card);
+      position:relative;
+    }
+  }
+  .tier-card h3{ font-size:19px; font-weight:800; }
+  .tier-card .cost{
+    font-family:var(--data); font-variant-numeric:tabular-nums;
+    font-size:38px; font-weight:500; letter-spacing:-.04em; margin:12px 0 2px; line-height:1;
+  }
+  .tier-card .cost small{ font-family:var(--body); font-size:13px; color:var(--slate); letter-spacing:0; margin-left:3px; }
+  .tier-card ul{ list-style:none; padding:0; margin:20px 0 24px; font-size:13.5px; flex:1; }
+  .tier-card li{ display:flex; gap:10px; padding:5px 0; align-items:flex-start; }
+  .tier-card li::before{ content:"→"; color:var(--flare); font-weight:700; flex-shrink:0; }
+  .tier-card li[data-off="true"]{ color:var(--slate-lo); }
+  .tier-card li[data-off="true"]::before{ content:"—"; color:var(--line); }
+  .ribbon{
+    position:absolute; top:-1px; right:22px;
+    background:var(--ink); color:#fff; font-size:9px; font-weight:800;
+    letter-spacing:.14em; text-transform:uppercase; padding:5px 10px;
+    border-radius:0 0 5px 5px;
+  }
+
+  /* --- editorial blocks --- */
+  .prose-card{
+    background:var(--card); border:1px solid var(--line); border-radius:var(--r-card);
+    padding:24px 26px; margin-bottom:13px;
+  }
+  .prose-card h3{ font-size:17px; font-weight:800; margin-bottom:10px; }
+  .prose-card p{ font-size:14px; line-height:1.72; margin:0 0 11px;
+    &:last-child{ margin-bottom:0; }
+  }
+  .prose-card p.small{ font-size:12.5px; color:var(--slate); }
+  .hl{ color:var(--flare); font-weight:600; }
+
+  .flow{ counter-reset:s; }
+  .flow li{
+    list-style:none; display:flex; gap:14px; padding:11px 0; font-size:14px; line-height:1.65;
+    & + li{ border-top:1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+    &::before{
+      counter-increment:s; content:counter(s, decimal-leading-zero);
+      font-family:var(--data); font-size:11px; font-weight:500; color:var(--flare);
+      padding-top:3px; flex-shrink:0;
+    }
+  }
+  .flow{ list-style:none; padding:0; margin:0; }
+}
+
+@layer components {
+  /* On a phone, the board matters more than a pinned masthead — let it scroll away,
+     and keep the nav on one swipeable line instead of wrapping to three. */
+  @media (max-width: 720px){
+    .masthead{ position:static; }
+    .tagline{ display:none; }
+    .mast-nav{ flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; }
+    .mast-nav::-webkit-scrollbar{ display:none; }
+    .masthead-row{ padding-block:13px; gap:12px; }
+    .price-num{ font-size:22px; }
+    .page-title{ font-size:clamp(2rem, 9vw, 2.7rem); }
+    main{ padding-block:22px 220px; }
+    .prose-card{ padding:20px; }
+    .tier-card{ padding:22px; }
+  }
+}
+
+@layer utilities {
+  .vh{ position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+  ::view-transition-old(page), ::view-transition-new(page){ animation-duration:.22s; }
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useMemo, useCallback, useRef } = React;
+
+/* ---------------- odds math ---------------- */
+function americanToDecimal(p){ return p > 0 ? 1 + p/100 : 1 + 100/Math.abs(p); }
+function decimalToAmerican(d){ return d >= 2 ? `+${Math.round((d-1)*100)}` : `${Math.round(-100/(d-1))}`; }
+function fmtAmerican(p){ return p > 0 ? `+${p}` : `${p}`; }
+function outcomeLabel(market, oc){
+  const desc = oc.description ? `${oc.description} ` : "";
+  if(market === "h2h") return oc.name;
+  if(oc.point !== undefined && oc.point !== null){
+    return `${desc}${oc.name} ${oc.point > 0 && market !== "totals" ? "+" : ""}${oc.point}`;
+  }
+  return `${desc}${oc.name}`;
+}
+/* Pull one leg's price out of an odds payload (a board game or a cached prop
+   response). Returns null when that book doesn't post the leg. */
+function priceFrom(source, bookKey, leg){
+  const bk = source && (source.bookmakers || []).find(b => b.key === bookKey);
+  const mkt = bk && (bk.markets || []).find(m => m.key === leg.market);
+  const oc = mkt && (mkt.outcomes || []).find(o => outcomeKeyOf(o) === leg.outcomeKey);
+  return oc ? oc.price : null;
+}
+
+function outcomeKeyOf(oc){ return `${oc.description ?? ""}__${oc.name}__${oc.point ?? ""}`; }
+function shortTeam(name){
+  const words = String(name).trim().split(/\s+/);
+  return (words[words.length - 1] || name).slice(0, 12);
+}
+
+const CORE_MARKETS = { h2h: "Moneyline", spreads: "Spread", totals: "Total" };
+const OUTRIGHT_MARKETS = { outrights: "To win" };
+function marketsMapFor(sportKey){ return isOutright(sportKey) ? OUTRIGHT_MARKETS : CORE_MARKETS; }
+
+/* Prefix match, so new key variants from the feed (e.g. individual golf majors)
+   get picked up without a code change.
+   NOTE: motorsport/NASCAR keys are included speculatively — if the feed doesn't
+   carry them, nothing appears and that's expected. Open the Diagnostics panel on
+   the Board tab to see exactly which keys your plan actually returns. */
+const SPORT_ALLOWLIST = [
+  "americanfootball_nfl","americanfootball_ncaaf","basketball_nba","basketball_ncaab",
+  "basketball_wnba","baseball_mlb","icehockey_nhl","soccer_usa_mls","mma_mixed_martial_arts",
+  "golf","motorsport","nascar","tennis"
+];
+
+/* The five that get a permanent tile; everything else lives behind "All sports". */
+const PRIMARY_SPORTS = [
+  "americanfootball_nfl","basketball_nba","baseball_mlb","icehockey_nhl","mma_mixed_martial_arts"
+];
+
+const SPORT_LABELS = {
+  americanfootball_nfl:"NFL", americanfootball_ncaaf:"NCAAF",
+  basketball_nba:"NBA", basketball_ncaab:"NCAAB", basketball_wnba:"WNBA",
+  baseball_mlb:"MLB", icehockey_nhl:"NHL", soccer_usa_mls:"MLS",
+  mma_mixed_martial_arts:"UFC",
+};
+function sportLabel(s){
+  if(SPORT_LABELS[s.key]) return SPORT_LABELS[s.key];
+  if(s.key.startsWith("motorsport") || s.key.startsWith("nascar")) return "NASCAR";
+  if(s.key.startsWith("golf")) return s.title.replace(/ Winner$/i, "").replace(/Tournament/i,"").trim() || "Golf";
+  if(s.key.startsWith("tennis")) return s.title.replace(/ Winner$/i, "").trim() || "Tennis";
+  return s.title;
+}
+/* Outright/futures events (golf fields, race winners) list dozens of runners
+   rather than two sides. They also use a DIFFERENT market key: "outrights",
+   not "h2h". Requesting h2h for golf returns books with no matching market,
+   which is why golf looked broken — the data was fine, we asked for the wrong
+   market. */
+function isOutright(sportKey){
+  /* The feed suffixes tournament-winner markets with _winner, which covers
+     golf majors and tennis draws without needing a list per sport. Individual
+     tennis MATCHES are ordinary two-sided h2h markets and are not outrights. */
+  return sportKey.startsWith("golf")
+      || sportKey.startsWith("motorsport")
+      || sportKey.startsWith("nascar")
+      || /_winner$/.test(sportKey);
+}
+/* Which markets to request, and which one carries the headline price. */
+function marketsFor(sportKey){ return isOutright(sportKey) ? "outrights" : "h2h,spreads,totals"; }
+function headlineMarket(sportKey){ return isOutright(sportKey) ? "outrights" : "h2h"; }
+const BOOKMAKER_BLACKLIST = [
+  "bovada","mybookieag","betonlineag","lowvig","everygame",
+  "fliff","betparx","betus","betanysports"
+];
+
+/* Book availability by state. APPROXIMATE — licensing changes often.
+   Verify with each book before relying on it. Not legal advice. */
+const BOOK_STATES = {
+  draftkings:   ["AZ","AR","CO","CT","DC","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","NH","NJ","NY","NC","OH","OR","PA","TN","VT","VA","WV","WY"],
+  fanduel:      ["AZ","AR","CO","CT","DC","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","NH","NJ","NY","NC","OH","PA","TN","VT","VA","WV","WY"],
+  betmgm:       ["AZ","CO","DC","IL","IN","IA","KS","KY","LA","MD","MA","MI","MS","NJ","NY","NC","OH","PA","TN","VA","WV","WY"],
+  williamhill_us:["AZ","CO","DC","IL","IN","IA","KS","KY","LA","MD","MA","MI","NJ","NY","NC","OH","PA","TN","VA","WV","WY"],
+  espnbet:      ["AZ","CO","IL","IN","IA","KS","KY","LA","MD","MI","NJ","NC","OH","PA","TN","VA","WV"],
+  fanatics:     ["AZ","CO","CT","IL","IN","IA","KS","KY","LA","MD","MA","MI","NJ","NC","OH","PA","TN","VA","WV","WY"],
+  betrivers:    ["AZ","CO","IL","IN","IA","LA","MD","MI","NJ","NY","OH","PA","VA","WV"],
+  hardrockbet:  ["AZ","FL","IL","IN","IA","NJ","OH","TN","VA"],
+  ballybet:     ["AZ","CO","IN","IA","NJ","NY","OH","VA"],
+  windcreek:    ["PA"],
+  novig:        ["AZ","CO","IL","IN","IA","KS","KY","MI","NJ","NY","OH","PA","TN","VA"],
+  prophetx:     ["AZ","CO","IL","IN","IA","KS","KY","MI","NJ","NY","OH","PA","TN","VA"],
+};
+
+const US_STATES = [
+  ["ALL","Show all books nationwide"],
+  ["AZ","Arizona"],["AR","Arkansas"],["CO","Colorado"],["CT","Connecticut"],
+  ["DC","District of Columbia"],["DE","Delaware"],["FL","Florida"],["IL","Illinois"],
+  ["IN","Indiana"],["IA","Iowa"],["KS","Kansas"],["KY","Kentucky"],["LA","Louisiana"],
+  ["ME","Maine"],["MD","Maryland"],["MA","Massachusetts"],["MI","Michigan"],
+  ["MS","Mississippi"],["MT","Montana"],["NE","Nebraska"],["NV","Nevada"],
+  ["NH","New Hampshire"],["NJ","New Jersey"],["NM","New Mexico"],["NY","New York"],
+  ["NC","North Carolina"],["ND","North Dakota"],["OH","Ohio"],["OR","Oregon"],
+  ["PA","Pennsylvania"],["RI","Rhode Island"],["SD","South Dakota"],["TN","Tennessee"],
+  ["VT","Vermont"],["VA","Virginia"],["WV","West Virginia"],["WI","Wisconsin"],["WY","Wyoming"],
+];
+
+/* Player props are scoped to the three leagues we actually support well.
+   College and baseball were pulled in V0.94 — a league absent here simply
+   won't appear in the Players tab league picker or show a props section on
+   the board, which is the intended behaviour. */
+const PROP_MARKETS = {
+  americanfootball_nfl: [
+    ["player_pass_yds","Passing Yards"],["player_pass_tds","Passing TDs"],
+    ["player_rush_yds","Rushing Yards"],["player_reception_yds","Receiving Yards"],
+    ["player_receptions","Receptions"],["player_anytime_td","Anytime TD"],
+  ],
+  basketball_nba: [
+    ["player_points","Points"],["player_rebounds","Rebounds"],["player_assists","Assists"],
+    ["player_threes","Threes Made"],["player_blocks","Blocks"],["player_steals","Steals"],
+  ],
+  icehockey_nhl: [
+    ["player_points","Points"],["player_goals","Goals"],
+    ["player_assists","Assists"],["player_shots_on_goal","Shots on Goal"],
+  ],
+};
+const GAME_PROP_MARKETS = [
+  ["alternate_spreads","Alternate Spreads"],
+  ["alternate_totals","Alternate Totals"],
+  ["team_totals","Team Totals"],
+];
+
+/* Grades one leg against a /scores event: "win" | "loss" | "push" | "pending" */
+function gradeLeg(leg, event){
+  if(!event || !event.completed || !Array.isArray(event.scores)) return "pending";
+  if(!["h2h","spreads","totals"].includes(leg.market)) return "pending";
+  const scores = {};
+  for(const s of event.scores) scores[s.name] = Number(s.score);
+  const home = event.home_team, away = event.away_team;
+  const parts = leg.outcomeKey.split("__");
+  const pickName = parts[1], pointStr = parts[2];
+
+  if(leg.market === "h2h"){
+    if(pickName === "Draw") return scores[home] === scores[away] ? "win" : "loss";
+    const opp = pickName === home ? away : home;
+    if(scores[pickName] === undefined || scores[opp] === undefined) return "pending";
+    if(scores[pickName] > scores[opp]) return "win";
+    if(scores[pickName] < scores[opp]) return "loss";
+    return "push";
+  }
+  if(leg.market === "spreads"){
+    const point = parseFloat(pointStr);
+    const opp = pickName === home ? away : home;
+    if(scores[pickName] === undefined || scores[opp] === undefined || isNaN(point)) return "pending";
+    const adj = scores[pickName] + point;
+    if(adj > scores[opp]) return "win";
+    if(adj < scores[opp]) return "loss";
+    return "push";
+  }
+  if(leg.market === "totals"){
+    const point = parseFloat(pointStr);
+    if(scores[home] === undefined || scores[away] === undefined || isNaN(point)) return "pending";
+    const total = scores[home] + scores[away];
+    if(pickName === "Over"){ if(total > point) return "win"; if(total < point) return "loss"; return "push"; }
+    if(pickName === "Under"){ if(total < point) return "win"; if(total > point) return "loss"; return "push"; }
+  }
+  return "pending";
+}
+
+function betPL(e){
+  if(e.status === "won") return e.payout - e.stake;
+  if(e.status === "push") return 0;
+  if(e.status === "lost") return -e.stake;
+  return null;
+}
+
+const PERIODS = [
+  { key:"week",  label:"This week",  days:7 },
+  { key:"month", label:"This month", days:30 },
+  { key:"year",  label:"This year",  days:365 },
+  { key:"all",   label:"All time",   days:null },
+];
+
+function exportLedgerCSV(ledger, username){
+  const headers = ["Timestamp","Book","Stake","American Odds","Boost %","Payout","Status","P/L","Legs"];
+  const rows = ledger.map(e => {
+    const pl = betPL(e);
+    const legsText = e.legs.map(l => `${l.matchup}: ${l.label} (${l.pickedBookTitle})`).join(" | ");
+    return [e.timestamp, e.book, e.stake, e.americanOdds, e.boostPct, e.payout.toFixed(2), e.status,
+            pl === null ? "" : pl, '"' + legsText.replace(/"/g, '""') + '"'].join(",");
+  });
+  const blob = new Blob([[headers.join(","), ...rows].join("\n")], { type:"text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${username || "stackd"}-ledger-${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/* V0.98 — all odds traffic goes through our Cloudflare Worker instead of
+   straight to The Odds API. The API key now lives as a secret on the Worker,
+   not in this file, and the Worker caches responses so N users cost one
+   upstream call rather than N. Same URL shapes as upstream, minus the key. */
+/* The SITE is served from stackd.dev-gm-software.workers.dev (static assets).
+   The odds PROXY is a separate code Worker — a static-assets Worker can't run
+   code, so the two can't share one deployment without a wrangler setup. */
+const ODDS_BASE = "https://stackd-api.dev-gm-software.workers.dev";
+
+/* The Odds API answers 401 for BOTH an invalid key and an exhausted quota, so
+   the status code alone can't tell you which — V0.99 guessed "key rejected"
+   and was wrong whenever credits simply ran out. The body carries the real
+   reason, and x-requests-remaining says whether there's any quota left, so
+   read those instead of guessing. */
+async function apiError(res){
+  let body = null;
+  try { body = await res.json(); } catch(_) { /* non-JSON error */ }
+  const code = (body && (body.error_code || body.errorCode)) || "";
+  const msg  = (body && body.message) || "";
+  const left = Number(res.headers.get("x-requests-remaining"));
+  const noCredits = /OUT_OF_USAGE_CREDITS|USAGE_LIMIT/i.test(code)
+    || /credit|quota/i.test(msg)
+    || (Number.isFinite(left) && left <= 0);
+
+  if(noCredits){
+    return "Out of API credits for this billing period — the odds feed stops returning prices until the quota resets or the plan is upgraded. Schedules and the league list still work, since those don't cost credits.";
+  }
+  if(res.status === 401) return msg || "The odds feed rejected the API key.";
+  if(res.status === 422) return msg || "No book is posting that market for this game.";
+  if(res.status === 429) return msg || "Too many requests at once — wait a few seconds and retry.";
+  return msg ? `${msg} (HTTP ${res.status})` : `The odds feed returned HTTP ${res.status}.`;
+}
+const FREE_GAME_SEARCHES = 3;   // single-game prop loads per day, free plan
+const FREE_FULL_SCANS   = 1;    // "scan upcoming" runs per day, free plan
+const PRO_PRICE = "9.99";
+
+/* Closing line value: how your locked price compares to where the line closed.
+   Positive means you beat the close — the metric that actually predicts whether
+   someone is picking well, independent of short-run luck. */
+function clvPercent(lockedAmerican, closeAmerican){
+  if(lockedAmerican == null || closeAmerican == null) return null;
+  const mine = americanToDecimal(lockedAmerican);
+  const close = americanToDecimal(closeAmerican);
+  if(!isFinite(mine) || !isFinite(close) || close <= 1) return null;
+  return (mine / close - 1) * 100;
+}
+
+const TOS_TEXT = `Stackd is a personal odds-comparison and pick-tracking tool. No real money is ever
+wagered, deposited, or withdrawn through this app — logged stakes and payouts are for your own
+performance tracking only, not a real balance. Odds and results data is pulled from third-party
+feeds and may be delayed, incomplete, or inaccurate; do not rely on it for real wagers. Sportsbook
+availability by state shown in this app is approximate and may be out of date — always confirm with
+the sportsbook directly. Any sportsbooks referenced are separate companies not affiliated with this
+app. You must meet the legal betting age in your jurisdiction to use this app. Your account data and
+picks are stored in our database and are never visible to any other account.`;
+
+const SUPABASE_URL = "https://vppjuwsuhagkxiajcfgd.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZwcGp1d3N1aGFna3hpYWpjZmdkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUzNjAzODMsImV4cCI6MjEwMDkzNjM4M30.Gi8ebJJ4knQdiClUdFzNpL8ZT66S9FHdj9882N06azg";
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+function mapEntryFromDB(row){
+  return {
+    id: row.id, timestamp: row.created_at, book: row.book, legs: row.legs,
+    bookComparison: row.book_comparison, stake: Number(row.stake),
+    americanOdds: row.american_odds, boostPct: Number(row.boost_pct) || 0,
+    payout: Number(row.payout), status: row.status,
+  };
+}
+
+/* ---------------- accounts ---------------- */
+function useAccount(){
+  const [session, setSession] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [ledger, setLedger] = useState([]);
+  const [authReady, setAuthReady] = useState(false);
+
+  useEffect(() => {
+    sb.auth.getSession().then(({ data }) => { setSession(data.session); setAuthReady(true); });
+    const { data: listener } = sb.auth.onAuthStateChange((_e, s) => setSession(s));
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  const refreshProfile = useCallback(async () => {
+    if(!session) return;
+    const { data } = await sb.from("profiles").select("*").eq("id", session.user.id).single();
+    setProfile(data);
+  }, [session]);
+
+  useEffect(() => {
+    if(!session){ setProfile(null); setLedger([]); return; }
+    (async () => {
+      await refreshProfile();
+      const { data } = await sb.from("ledger_entries").select("*")
+        .eq("user_id", session.user.id).order("created_at", { ascending:false });
+      setLedger((data || []).map(mapEntryFromDB));
+    })();
+  }, [session, refreshProfile]);
+
+  const isUsernameTaken = async (name) => {
+    const { data } = await sb.from("usernames").select("username");
+    return (data || []).some(r => (r.username || "").toLowerCase() === name.toLowerCase());
+  };
+
+  const signUp = async (email, username, password, confirmPassword, tos) => {
+    if(!email.trim() || !username.trim() || !password.trim()) return "Fill in every field.";
+    if(!/^\S+@\S+\.\S+$/.test(email.trim())) return "That email address doesn't look right.";
+    if(!/^[a-zA-Z0-9_]{3,20}$/.test(username.trim())) return "Usernames are 3–20 letters, numbers, or underscores.";
+    if(password.length < 8) return "Use at least 8 characters for your password.";
+    if(password !== confirmPassword) return "The two passwords don't match.";
+    if(!tos) return "Accept the terms to continue.";
+    if(await isUsernameTaken(username.trim())) return "That username is taken. Try another.";
+
+    const { data, error } = await sb.auth.signUp({ email: email.trim(), password });
+    if(error) return error.message;
+    if(data.user){
+      const { error: pErr } = await sb.from("profiles")
+        .update({ username: username.trim(), tos_accepted_at: new Date().toISOString() })
+        .eq("id", data.user.id);
+      if(pErr && /duplicate|unique/i.test(pErr.message)) return "That username was just claimed. Try another.";
+    }
+    return { needsConfirmation:true };
+  };
+
+  const signIn = async (email, password) => {
+    const { error } = await sb.auth.signInWithPassword({ email: email.trim(), password });
+    return error ? error.message : null;
+  };
+
+  const signOut = () => sb.auth.signOut();
+
+  const updateSettings = async (patch) => {
+    if(!session) return "Not signed in.";
+    const { error } = await sb.from("profiles").update(patch).eq("id", session.user.id);
+    if(error) return error.message;
+    await refreshProfile();
+    return null;
+  };
+
+  const addLedgerEntry = async (entry) => {
+    const { data, error } = await sb.from("ledger_entries").insert({
+      user_id: session.user.id, book: entry.book, legs: entry.legs,
+      book_comparison: entry.bookComparison, stake: entry.stake,
+      american_odds: entry.americanOdds, boost_pct: entry.boostPct,
+      payout: entry.payout, status: entry.status,
+    }).select().single();
+    if(error) return error;
+    setLedger(prev => [mapEntryFromDB(data), ...prev]);
+    return null;
+  };
+
+  const updateLedgerEntry = async (id, patch) => {
+    const { data, error } = await sb.from("ledger_entries").update(patch).eq("id", id).select().single();
+    if(error) return error;
+    setLedger(prev => prev.map(e => e.id === id ? mapEntryFromDB(data) : e));
+    return null;
+  };
+
+  /* Free-plan prop quotas, split in V0.95: single-game loads and full scans have
+     separate daily allowances that reset together. Soft limits — the counts live
+     in columns the browser can write, so they're properly enforceable only once
+     the odds proxy exists. */
+  const todayISO = () => new Date().toISOString().slice(0,10);
+  const sameDay = profile?.prop_refresh_date === todayISO();
+
+  const gameSearchesUsed = sameDay ? (profile?.prop_refresh_count || 0) : 0;
+  const fullScansUsed    = sameDay ? (profile?.scan_all_count || 0) : 0;
+  const gameSearchesLeft = Math.max(0, FREE_GAME_SEARCHES - gameSearchesUsed);
+  const fullScansLeft    = Math.max(0, FREE_FULL_SCANS - fullScansUsed);
+
+  // kind: "game" (one game's props) | "scan" (scan upcoming)
+  const consumePropRefresh = async (kind = "game") => {
+    if(!session) return;
+    const patch = { prop_refresh_date: todayISO() };
+    // A new day zeroes whichever counter isn't being incremented.
+    patch.prop_refresh_count = (kind === "game" ? gameSearchesUsed + 1 : gameSearchesUsed);
+    patch.scan_all_count     = (kind === "scan" ? fullScansUsed + 1    : fullScansUsed);
+    await sb.from("profiles").update(patch).eq("id", session.user.id);
+    await refreshProfile();
+  };
+
+  return {
+    session, profile, ledger, authReady,
+    signedIn: !!session,
+    username: profile?.username || session?.user?.email || null,
+    email: session?.user?.email || null,
+    homeState: profile?.home_state || "ALL",
+    isPro: profile?.plan === "pro",
+    favoriteSports: profile?.favorite_sports || [],
+    gameSearchesUsed, gameSearchesLeft, fullScansUsed, fullScansLeft, consumePropRefresh,
+    signUp, signIn, signOut, updateSettings, addLedgerEntry, updateLedgerEntry, refreshProfile,
+  };
+}
+
+/* ADMIN PROVISIONING — stub. A real version needs an admin-only Edge Function
+   (service-role guarded) calling sb.auth.admin.inviteUserByEmail(email).
+   The service-role key must never reach the browser. */
+function adminCreateAccount(email){
+  console.warn("adminCreateAccount() is a stub — needs a protected admin route.", email);
+  return { ok:false, reason:"Not implemented — requires an admin-authenticated server route." };
+}
+
+/* ---------------- brand components ---------------- */
+function LogoMark({ size = 30 }){
+  // Three ascending bars, the top one coral: you stack picks, one price rises above.
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" role="img" aria-label="Stackd">
+      <rect width="32" height="32" rx="7" fill="rgba(255,255,255,.07)" />
+      <rect x="7" y="20" width="9" height="4" rx="1.4" fill="#fff" opacity=".4" />
+      <rect x="7" y="14" width="14" height="4" rx="1.4" fill="#fff" opacity=".68" />
+      <rect x="7" y="8" width="19" height="4" rx="1.4" fill="#FF5A45" />
+    </svg>
+  );
+}
+
+function Brandmark(){
+  return (
+    <div className="brandmark">
+      <LogoMark />
+      <div>
+        <div className="wordmark">STACK<i>D</i></div>
+        <div className="tagline">Every book, one board</div>
+      </div>
+    </div>
+  );
+}
+
+/* Signature element: a live ribbon of the best current prices on the board. */
+function LineTicker({ games }){
+  const ticks = useMemo(() => {
+    const out = [];
+    for(const g of games){
+      const best = {};
+      const hm = headlineMarket(g.sport_key);
+      for(const bk of g.bookmakers){
+        const mkt = bk.markets.find(m => m.key === hm);
+        if(!mkt) continue;
+        for(const oc of mkt.outcomes){
+          if(!best[oc.name] || oc.price > best[oc.name].price){
+            best[oc.name] = { price: oc.price, book: bk.title };
+          }
+        }
+      }
+      for(const [team, v] of Object.entries(best)){
+        out.push({ team: shortTeam(team), price: v.price, book: v.book });
+      }
+    }
+    return out.slice(0, 40);
+  }, [games]);
+
+  if(ticks.length === 0){
+    return (
+      <div className="ticker">
+        <div className="shell ticker-idle">Live board · waiting for prices</div>
+      </div>
+    );
+  }
+
+  // Rendered twice so the -50% keyframe loops seamlessly.
+  const run = [...ticks, ...ticks];
+
+  return (
+    <div className="ticker">
+      <div className="ticker-track" aria-hidden="true">
+        {run.map((t,i) => (
+          <span className="tick" key={i}>
+            <span className="tick-team">{t.team}</span>
+            <span className={`tick-price ${t.price > 0 ? "up" : ""}`}>{fmtAmerican(t.price)}</span>
+            <span className="tick-book">{t.book}</span>
+          </span>
+        ))}
+      </div>
+      <p className="vh">Best current moneyline prices across the books on your board.</p>
+    </div>
+  );
+}
+
+function SiteFooter(){
+  return (
+    <footer className="site-foot">
+      <div className="shell foot-grid">
+        <div>
+          <Brandmark />
+        </div>
+        <div className="foot-legal">
+          <p style={{margin:0}}>
+            <strong>Stackd compares prices. It never takes wagers.</strong> We don't hold funds, accept
+            bets, or place them for you — you bet at the sportsbook itself.
+          </p>
+          <p style={{margin:"9px 0 0"}}>
+            Odds come from a third-party feed and can lag a book's own app. State availability is
+            approximate. Confirm both with the sportsbook before you bet. Not affiliated with any
+            sportsbook.
+          </p>
+          <span className="foot-21">
+            <b>21+</b> If gambling stops being fun, call 1-800-GAMBLER.
+          </span>
+        </div>
+      </div>
+    </footer>
+  );
+}
+
+/* ---------------- auth dialog (native <dialog>) ---------------- */
+function AuthDialog({ account, open, onClose }){
+  const ref = useRef(null);
+  const [mode, setMode] = useState("signin"); // signin | signup | sent | reset | reset-sent
+  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [tos, setTos] = useState(false);
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const d = ref.current;
+    if(!d) return;
+    if(open && !d.open) d.showModal();
+    if(!open && d.open) d.close();
+  }, [open]);
+
+  const reset = () => { setEmail(""); setUsername(""); setPassword(""); setConfirm(""); setTos(false); setErr(""); };
+
+  const sendReset = async () => {
+    if(!email.trim()){ setErr("Enter the email on your account."); return; }
+    setErr(""); setBusy(true);
+    const { error } = await sb.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: window.location.origin,
+    });
+    setBusy(false);
+    if(error){ setErr(error.message); return; }
+    setMode("reset-sent");
+  };
+
+  const submit = async () => {
+    setErr(""); setBusy(true);
+    if(mode === "signup"){
+      const r = await account.signUp(email, username, password, confirm, tos);
+      setBusy(false);
+      if(typeof r === "string"){ setErr(r); return; }
+      setMode("sent");
+      return;
+    }
+    if(!email.trim() || !password.trim()){ setBusy(false); setErr("Enter your email and password."); return; }
+    const e = await account.signIn(email, password);
+    setBusy(false);
+    if(e){ setErr(e); return; }
+    reset(); setMode("signin"); onClose();
+  };
+
+  return (
+    <dialog ref={ref} onClose={onClose} onCancel={onClose}>
+      <div className="sheet">
+        {mode === "sent" ? (
+          <React.Fragment>
+            <h2>Confirm your email</h2>
+            <p className="sub">
+              We sent a link to <b>{email}</b>. Open it to activate the account, then sign in.
+            </p>
+            <div className="sheet-actions">
+              <button className="btn btn-solid" onClick={() => { setMode("signin"); reset(); }}>
+                Back to sign in
+              </button>
+            </div>
+          </React.Fragment>
+        ) : mode === "reset-sent" ? (
+          <React.Fragment>
+            <h2>Check your email</h2>
+            <p className="sub">
+              If an account exists for <b>{email}</b>, a reset link is on its way. Open it to set
+              a new password.
+            </p>
+            <div className="sheet-actions">
+              <button className="btn btn-solid" onClick={() => { setMode("signin"); reset(); }}>
+                Back to sign in
+              </button>
+            </div>
+          </React.Fragment>
+        ) : mode === "reset" ? (
+          <React.Fragment>
+            <h2>Reset your password</h2>
+            <p className="sub">Enter your email and we'll send a link to set a new one.</p>
+            {err && <div className="msg msg-err">{err}</div>}
+            <div className="field">
+              <label htmlFor="au-reset">Email</label>
+              <input id="au-reset" type="email" autoComplete="email"
+                value={email} onChange={e => setEmail(e.target.value)}
+                onKeyDown={e => { if(e.key === "Enter") sendReset(); }} />
+            </div>
+            <div className="sheet-actions">
+              <button className="btn btn-solid" onClick={sendReset} disabled={busy}>
+                {busy ? "Sending…" : "Send reset link"}
+              </button>
+              <button className="linkish" style={{alignSelf:"center"}}
+                onClick={() => { setMode("signin"); setErr(""); }}>
+                Back to sign in
+              </button>
+            </div>
+          </React.Fragment>
+        ) : (
+          <React.Fragment>
+            <h2>{mode === "signup" ? "Create your account" : "Sign in"}</h2>
+            <p className="sub">
+              {mode === "signup"
+                ? "Your picks and performance stay private to you."
+                : "Pick up where you left off."}
+            </p>
+
+            {err && <div className="msg msg-err">{err}</div>}
+
+            <div className="field">
+              <label htmlFor="au-email">Email</label>
+              <input id="au-email" type="email" autoComplete="email"
+                value={email} onChange={e => setEmail(e.target.value)} />
+            </div>
+
+            {mode === "signup" && (
+              <div className="field">
+                <label htmlFor="au-user">Username</label>
+                <input id="au-user" type="text" autoComplete="username" placeholder="3–20 characters"
+                  value={username} onChange={e => setUsername(e.target.value)} />
+              </div>
+            )}
+
+            <div className="field">
+              <label htmlFor="au-pass">Password</label>
+              <input id="au-pass" type="password"
+                autoComplete={mode === "signup" ? "new-password" : "current-password"}
+                value={password} onChange={e => setPassword(e.target.value)} />
+            </div>
+
+            {mode === "signup" && (
+              <React.Fragment>
+                <div className="field">
+                  <label htmlFor="au-conf">Confirm password</label>
+                  <input id="au-conf" type="password" autoComplete="new-password"
+                    value={confirm} onChange={e => setConfirm(e.target.value)} />
+                </div>
+                <div className="terms">{TOS_TEXT}</div>
+                <label className="agree">
+                  <input type="checkbox" checked={tos} onChange={e => setTos(e.target.checked)} />
+                  <span>I've read and accept the terms.</span>
+                </label>
+              </React.Fragment>
+            )}
+
+            <div className="sheet-actions">
+              <button className={`btn ${mode === "signup" ? "btn-flare" : "btn-solid"}`}
+                onClick={submit} disabled={busy}>
+                {busy ? "Working…" : mode === "signup" ? "Create account" : "Sign in"}
+              </button>
+              <button className="linkish" style={{alignSelf:"center"}}
+                onClick={() => { setMode(mode === "signup" ? "signin" : "signup"); setErr(""); }}>
+                {mode === "signup" ? "Already have an account? Sign in" : "New here? Create an account"}
+              </button>
+              {mode === "signin" && (
+                <button className="linkish" style={{alignSelf:"center"}}
+                  onClick={() => { setMode("reset"); setErr(""); }}>
+                  Forgot your password?
+                </button>
+              )}
+            </div>
+          </React.Fragment>
+        )}
+      </div>
+    </dialog>
+  );
+}
+
+/* ---------------- settings (native popover) ---------------- */
+function SettingsPopover({ account, sports }){
+  const [draftState, setDraftState] = useState(account.homeState);
+  const [draftSport, setDraftSport] = useState("");
+  const [msg, setMsg] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => { setDraftState(account.homeState); }, [account.homeState]);
+  useEffect(() => {
+    setDraftSport(account.favoriteSports?.[0] || "");
+  }, [account.favoriteSports]);
+
+  const save = async () => {
+    setBusy(true); setMsg(null);
+    const favSports = draftSport
+      ? [draftSport, ...account.favoriteSports.filter(k => k !== draftSport)]
+      : account.favoriteSports;
+    const err = await account.updateSettings({
+      home_state: draftState,
+      favorite_sports: favSports,
+    });
+    setBusy(false);
+    setMsg(err ? { t:"err", m:err } : { t:"ok", m:"Saved." });
+    if(!err) setTimeout(() => setMsg(null), 2400);
+  };
+
+  return (
+    <div id="settings-pop" popover="auto">
+      <div className="pop">
+        <h3>Settings</h3>
+        <p style={{fontSize:12, color:"var(--slate)", margin:"0 0 16px"}}>{account.email}</p>
+
+        {msg && <div className={`msg ${msg.t === "err" ? "msg-err" : "msg-ok"}`}>{msg.m}</div>}
+
+        <div className="field">
+          <label htmlFor="st-state">State you bet in most</label>
+          <select id="st-state" className="select-native" value={draftState}
+            onChange={e => setDraftState(e.target.value)}>
+            {US_STATES.map(([c,n]) => <option key={c} value={c}>{n}</option>)}
+          </select>
+        </div>
+        <p className="fine" style={{marginTop:0, marginBottom:14}}>
+          Narrows the board to books operating there. Approximate — confirm with the book.
+        </p>
+
+        <div className="field">
+          <label htmlFor="st-sport">Favorite sport</label>
+          <select id="st-sport" className="select-native" value={draftSport}
+            onChange={e => setDraftSport(e.target.value)}>
+            <option value="">No preference</option>
+            {sports.map(s => <option key={s.key} value={s.key}>{sportLabel(s)}</option>)}
+          </select>
+        </div>
+        <p className="fine" style={{marginTop:0, marginBottom:14}}>
+          Opens the board here and pins it to your tiles.
+        </p>
+
+        <div className="sheet-actions">
+          <button className="btn btn-solid" onClick={save} disabled={busy}>
+            {busy ? "Saving…" : "Save settings"}
+          </button>
+          <button className="linkish" style={{alignSelf:"center"}}
+            onClick={() => document.getElementById("settings-pop")?.hidePopover?.()}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- main ---------------- */
+function App(){
+  const [tab, setTab] = useState("board");
+  const [timing, setTiming] = useState("pre");
+  const [sports, setSports] = useState([]);
+  const [allSports, setAllSports] = useState([]);
+  const [sportKey, setSportKey] = useState("");
+  const [games, setGames] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [quota, setQuota] = useState(null);
+  const [parlay, setParlay] = useState([]);
+  const [stake, setStake] = useState(20);
+  const [bookBoosts, setBookBoosts] = useState({});
+  const [logMsg, setLogMsg] = useState("");
+  const [authOpen, setAuthOpen] = useState(false);
+  const [gameQuery, setGameQuery] = useState("");
+  const [trayOpen, setTrayOpen] = useState(true);
+
+  /* V1.1 — prop odds live in per-event payloads that the board's `games` array
+     never contains. Before this, pricing a prop parlay across two books failed:
+     each book could only price the leg picked FROM it, because the other book's
+     prop price had already been thrown away after rendering. We keep those
+     payloads now, so every book in the slip can be priced against every leg. */
+  const [propCache, setPropCache] = useState({});
+  const cacheProps = useCallback((gameId, payload) => {
+    if(!gameId || !payload) return;
+    setPropCache(prev => {
+      const byBook = new Map((prev[gameId]?.bookmakers || []).map(b => [b.key, b]));
+      for(const bk of (payload.bookmakers || [])){
+        const cur = byBook.get(bk.key);
+        if(!cur){ byBook.set(bk.key, { ...bk, markets: [...(bk.markets || [])] }); continue; }
+        const byMarket = new Map((cur.markets || []).map(m => [m.key, m]));
+        for(const m of (bk.markets || [])) byMarket.set(m.key, m);
+        byBook.set(bk.key, { ...cur, markets: [...byMarket.values()] });
+      }
+      return { ...prev, [gameId]: { bookmakers: [...byBook.values()] } };
+    });
+  }, []);
+
+  const account = useAccount();
+  const homeState = account.homeState;
+
+  // View Transitions on tab change where supported; plain state change otherwise.
+  const goTab = (t) => {
+    if(t === tab) return;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if(document.startViewTransition && !reduce){
+      document.startViewTransition(() => ReactDOM.flushSync(() => setTab(t)));
+    }else{
+      setTab(t);
+    }
+  };
+
+  const loadSports = useCallback(async () => {
+    setError("");
+    try{
+      const res = await fetch(`${ODDS_BASE}/v4/sports/`);
+      if(!res.ok) throw new Error(`Couldn't load the sports list (${res.status}).`);
+      const data = await res.json();
+      setAllSports(data);
+      const active = data.filter(s => s.active && SPORT_ALLOWLIST.some(p => s.key.startsWith(p)));
+      setSports(active);
+      /* Deliberately does NOT pick a sport. It used to grab active[0], which the
+         API returns alphabetically — americanfootball_ncaaf. That flashed college
+         football on load and burned an odds call before the effect below
+         corrected it to NFL. That effect is now the only thing that chooses. */
+    }catch(e){
+      setError(`${e.message} Check the API key and your connection.`);
+    }
+  }, []);
+
+  useEffect(() => { loadSports(); }, [loadSports]);
+
+  // Land on the user's favorite league once sports and profile are both in.
+  // Runs only until the first choice is made, so it never fights manual switching.
+  const pickedInitialSport = useRef(false);
+  useEffect(() => {
+    if(pickedInitialSport.current || sports.length === 0) return;
+    if(account.signedIn && !account.profile) return; // wait for the profile
+    const fav = account.favoriteSports?.[0];
+    const target = (fav && sports.some(s => s.key === fav)) ? fav
+      : (sports.find(s => s.key === "americanfootball_nfl")?.key || sports[0].key);
+    pickedInitialSport.current = true;
+    setSportKey(target);
+  }, [sports, account.signedIn, account.profile, account.favoriteSports]);
+
+  const loadOdds = useCallback(async () => {
+    if(!sportKey) return;
+    setLoading(true); setError("");
+    try{
+      const res = await fetch(`${ODDS_BASE}/v4/sports/${sportKey}/odds/?regions=us,us2&markets=${marketsFor(sportKey)}&oddsFormat=american`);
+      const remaining = res.headers.get("x-requests-remaining");
+      if(remaining !== null) setQuota(remaining);
+      if(!res.ok) throw new Error(await apiError(res));
+      setGames(await res.json());
+    }catch(e){
+      setError(e.message); setGames([]);
+    }finally{
+      setLoading(false);
+    }
+  }, [sportKey]);
+
+  useEffect(() => { if(sportKey) loadOdds(); }, [sportKey, loadOdds]);
+
+  const openSettings = () => {
+    const el = document.getElementById("settings-pop");
+    if(el?.showPopover) el.showPopover();
+  };
+
+  const toggleFavoriteSport = async (key) => {
+    if(!account.signedIn) return;
+    const cur = account.favoriteSports;
+    const next = cur.includes(key) ? cur.filter(k => k !== key) : [...cur, key];
+    await account.updateSettings({ favorite_sports: next });
+  };
+
+
+  const filteredGames = useMemo(() => games.map(g => ({
+    ...g,
+    bookmakers: g.bookmakers.filter(bk => {
+      if(BOOKMAKER_BLACKLIST.includes(bk.key)) return false;
+      if(homeState === "ALL") return true;
+      const states = BOOK_STATES[bk.key];
+      return states ? states.includes(homeState) : false;
+    }),
+  })), [games, homeState]);
+
+  const { preGames, liveGames } = useMemo(() => {
+    const now = new Date();
+    const pre = [], live = [];
+    for(const g of filteredGames){ (new Date(g.commence_time) > now ? pre : live).push(g); }
+    return { preGames: pre, liveGames: live };
+  }, [filteredGames]);
+
+  const timedGames = timing === "pre" ? preGames : liveGames;
+  const visibleGames = useMemo(() => {
+    const q = gameQuery.trim().toLowerCase();
+    if(!q) return timedGames;
+    return timedGames.filter(g =>
+      `${g.away_team || ""} ${g.home_team || ""} ${g.sport_title || ""}`.toLowerCase().includes(q));
+  }, [timedGames, gameQuery]);
+
+  const groupedByDay = useMemo(() => {
+    const groups = []; const byKey = {};
+    const sorted = [...visibleGames].sort((a,b) => new Date(a.commence_time) - new Date(b.commence_time));
+    for(const g of sorted){
+      const d = new Date(g.commence_time);
+      const key = d.toDateString();
+      if(!byKey[key]){
+        const today = new Date().toDateString();
+        const tomorrow = new Date(Date.now() + 86400000).toDateString();
+        const label = key === today ? "Today" : key === tomorrow ? "Tomorrow"
+          : d.toLocaleDateString(undefined, { weekday:"long", month:"long", day:"numeric" });
+        byKey[key] = { label, games: [] };
+        groups.push(byKey[key]);
+      }
+      byKey[key].games.push(g);
+    }
+    return groups;
+  }, [visibleGames]);
+
+  const addLeg = (game, bk, mkt, outcome) => {
+    const oKey = outcomeKeyOf(outcome);
+    const legId = `${game.id}-${mkt.key}-${oKey}`;
+    const legData = {
+      id: legId, gameId: game.id, sportKey: game.sport_key,
+      matchup: `${game.away_team} @ ${game.home_team}`,
+      market: mkt.key, outcomeKey: oKey,
+      label: outcomeLabel(mkt.key, outcome),
+      pickedBookKey: bk.key, pickedBookTitle: bk.title,
+      livePrice: outcome.price,
+    };
+    setTrayOpen(true);
+    setParlay(prev => {
+      const idx = prev.findIndex(l => l.id === legId);
+      if(idx === -1) return [...prev, legData];
+      if(prev[idx].pickedBookKey === bk.key) return prev.filter(l => l.id !== legId);
+      const copy = [...prev]; copy[idx] = legData; return copy;
+    });
+  };
+  const removeLeg = (id) => setParlay(prev => prev.filter(l => l.id !== id));
+  const parlayPickedSet = useMemo(() => new Set(parlay.map(l => `${l.pickedBookKey}|${l.id}`)), [parlay]);
+
+  const chosenBooksComparison = useMemo(() => {
+    if(parlay.length === 0) return [];
+    const bookKeys = [...new Set(parlay.map(l => l.pickedBookKey))];
+    return bookKeys.map(bookKey => {
+      let decimal = 1, legsFound = 0; const missing = [];
+      const title = parlay.find(l => l.pickedBookKey === bookKey)?.pickedBookTitle || bookKey;
+      for(const leg of parlay){
+        const game = filteredGames.find(g => g.id === leg.gameId);
+        // board markets → cached prop payloads → the price captured on click
+        let price = priceFrom(game, bookKey, leg);
+        if(price === null) price = priceFrom(propCache[leg.gameId], bookKey, leg);
+        if(price === null && leg.pickedBookKey === bookKey && leg.livePrice != null) price = leg.livePrice;
+        if(price !== null){ decimal *= americanToDecimal(price); legsFound++; }
+        else missing.push(leg.label);
+      }
+      return { bookKey, title, decimal, legsFound, missing, complete: legsFound === parlay.length };
+    });
+  }, [parlay, filteredGames, propCache]);
+
+  const stakeNum = Number(stake) || 0;
+
+  const rankedComparison = useMemo(() => {
+    const withPayout = chosenBooksComparison.map(row => {
+      const basePayout = stakeNum * row.decimal;
+      const boostPct = Number(bookBoosts[row.bookKey]) || 0;
+      const boostedPayout = boostPct > 0 ? stakeNum + (basePayout - stakeNum) * (1 + boostPct/100) : basePayout;
+      return { ...row, basePayout, boostedPayout };
+    });
+    const complete = withPayout.filter(r => r.complete).sort((a,b) => b.boostedPayout - a.boostedPayout);
+    return [...complete, ...withPayout.filter(r => !r.complete)];
+  }, [chosenBooksComparison, stakeNum, bookBoosts]);
+
+  const logBestToLedger = async () => {
+    const best = rankedComparison.find(r => r.complete);
+    if(!best){ setLogMsg("No book covers every leg yet."); return; }
+    if(!account.signedIn){ setLogMsg("Sign in to save picks."); return; }
+    const now = new Date().toISOString();
+    const structuredLegs = parlay.map(leg => {
+      const game = filteredGames.find(g => g.id === leg.gameId);
+      const price = priceFrom(game, leg.pickedBookKey, leg)
+        ?? priceFrom(propCache[leg.gameId], leg.pickedBookKey, leg)
+        ?? leg.livePrice ?? null;
+      return {
+        matchup: leg.matchup, label: leg.label,
+        pickedBookKey: leg.pickedBookKey, pickedBookTitle: leg.pickedBookTitle,
+        gameId: leg.gameId, sportKey: leg.sportKey, market: leg.market, outcomeKey: leg.outcomeKey,
+        originalPrice: price, peakPrice: price, peakAt: now, lowPrice: price, lowAt: now,
+        closePrice: price, closeAt: now,
+        result: "pending",
+      };
+    });
+    const entry = {
+      book: best.title, legs: structuredLegs, stake: stakeNum,
+      americanOdds: decimalToAmerican(best.decimal),
+      boostPct: Number(bookBoosts[best.bookKey]) || 0,
+      payout: best.boostedPayout, status: "pending",
+      bookComparison: rankedComparison.map(row => ({
+        title: row.title, picked: row.bookKey === best.bookKey, complete: row.complete,
+        americanOdds: row.complete ? decimalToAmerican(row.decimal) : null, missing: row.missing,
+      })),
+    };
+    const error = await account.addLedgerEntry(entry);
+    setLogMsg(error ? `Couldn't save that: ${error.message}` : "Saved to your ledger.");
+    setTimeout(() => setLogMsg(""), 3000);
+  };
+
+  const resolveBet = (entryId, status) => account.updateLedgerEntry(entryId, { status });
+
+  // Track best and worst price seen while a pick is pending.
+  useEffect(() => {
+    if(!account.signedIn || filteredGames.length === 0) return;
+    for(const entry of account.ledger){
+      if(entry.status !== "pending") continue;
+      let changed = false;
+      const legs = entry.legs.map(leg => {
+        if(leg.sportKey !== sportKey || leg.originalPrice == null) return leg;
+        const game = filteredGames.find(g => g.id === leg.gameId);
+        const livePrice = priceFrom(game, leg.pickedBookKey, leg)
+          ?? priceFrom(propCache[leg.gameId], leg.pickedBookKey, leg);
+        if(livePrice === null || livePrice === undefined) return leg;
+        const outcome = { price: livePrice };
+        let next = leg;
+        const cur = americanToDecimal(outcome.price);
+        if(leg.peakPrice == null || cur > americanToDecimal(leg.peakPrice)){
+          next = { ...next, peakPrice: outcome.price, peakAt: new Date().toISOString() }; changed = true;
+        }
+        if(leg.lowPrice == null || cur < americanToDecimal(leg.lowPrice)){
+          next = { ...next, lowPrice: outcome.price, lowAt: new Date().toISOString() }; changed = true;
+        }
+        // Closing line: keep overwriting while the game hasn't started. Once it has,
+        // this stops updating, so whatever was last seen pre-game is the close.
+        const started = new Date(game.commence_time) <= new Date();
+        if(!started && leg.closePrice !== outcome.price){
+          next = { ...next, closePrice: outcome.price, closeAt: new Date().toISOString() }; changed = true;
+        }
+        return next;
+      });
+      if(changed) account.updateLedgerEntry(entry.id, { legs });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredGames]);
+
+  const [checkingResults, setCheckingResults] = useState(false);
+  const checkResults = useCallback(async () => {
+    if(!account.signedIn) return;
+    const pendingEntries = account.ledger.filter(e => e.status === "pending");
+    if(pendingEntries.length === 0) return;
+    setCheckingResults(true);
+    const sportKeys = [...new Set(pendingEntries.flatMap(e => e.legs.map(l => l.sportKey)))];
+    const scoresBySport = {};
+    for(const sk of sportKeys){
+      try{
+        const res = await fetch(`${ODDS_BASE}/v4/sports/${sk}/scores/?daysFrom=3`);
+        if(res.ok){
+          const data = await res.json();
+          scoresBySport[sk] = {};
+          for(const ev of data) scoresBySport[sk][ev.id] = ev;
+        }
+      }catch(e){ /* leave pending */ }
+    }
+    for(const entry of pendingEntries){
+      const legs = entry.legs.map(leg => {
+        if(leg.result && leg.result !== "pending") return leg;
+        return { ...leg, result: gradeLeg(leg, scoresBySport[leg.sportKey]?.[leg.gameId]) };
+      });
+      const results = legs.map(l => l.result);
+      let status = "pending";
+      if(results.every(r => r !== "pending")){
+        if(results.includes("loss")) status = "lost";
+        else if(results.every(r => r === "push")) status = "push";
+        else status = "won";
+      }
+      if(status !== entry.status || legs.some((l,i) => l.result !== entry.legs[i].result)){
+        await account.updateLedgerEntry(entry.id, { legs, status });
+      }
+    }
+    setCheckingResults(false);
+  }, [account]);
+
+  useEffect(() => { if(tab === "dashboard") checkResults(); }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const stateName = US_STATES.find(([c]) => c === homeState)?.[1] || "all books";
+  const NAV = [["board","Board"],["players","Players"],
+               ["dashboard","Dashboard"],["pricing","Pricing"],["info","How it works"]];
+
+  return (
+    <React.Fragment>
+      <header className="masthead">
+        <div className="shell masthead-row">
+          <Brandmark />
+          <nav className="mast-nav" aria-label="Sections">
+            {NAV.map(([k,label]) => (
+              <button key={k} onClick={() => goTab(k)} aria-current={tab === k ? "page" : undefined}>
+                {label}
+              </button>
+            ))}
+          </nav>
+          <div className="mast-right">
+            {/* Credit counter is tracked on the-odds-api.com rather than shown
+                here — it's an operating detail, not something users need. The
+                value is still read into `quota` if it's ever wanted back. */}
+            {tab === "board" && (
+              <button className="ghost" onClick={loadOdds} disabled={loading}>
+                {loading ? "Refreshing…" : "Refresh odds"}
+              </button>
+            )}
+            {account.authReady && (
+              account.signedIn ? (
+                <div className="whoami">
+                  <b>{account.username}</b>
+                  <span className="tier" data-t={account.isPro ? "pro" : "free"}>
+                    {account.isPro ? "Pro" : "Free"}
+                  </span>
+                  <button className="ghost" onClick={openSettings}>Settings</button>
+                  <button className="ghost" onClick={account.signOut}>Sign out</button>
+                </div>
+              ) : (
+                <button className="btn btn-flare" onClick={() => setAuthOpen(true)}>Sign in</button>
+              )
+            )}
+          </div>
+        </div>
+        <LineTicker games={filteredGames} />
+      </header>
+
+      <main className="shell" style={{viewTransitionName:"page"}}>
+        {/* Ads removed in V1.3 — a placeholder box cost polish for no revenue,
+            and display CPM is meaningless at this traffic. The full AdSense
+            implementation is in V1.2 if it is ever worth reviving. */}
+
+        {tab === "board" && (
+          <React.Fragment>
+            <section className="pitch">
+              <h2>What makes this different</h2>
+              <p>
+                Anywhere can show you one book's odds. Stackd lets you <b>build a parlay from picks
+                across different books</b>, then prices that same slip at each one — with your own
+                promo boosts factored in. The book with the loudest promo often isn't the one that
+                pays most, and this is where you find out.
+              </p>
+            </section>
+
+            <SportTiles sports={sports} sportKey={sportKey} onPick={setSportKey}
+              favorites={account.favoriteSports} onToggleFavorite={toggleFavoriteSport}
+              canFavorite={account.signedIn} />
+
+            <div className="toolbar">
+              <div className="searchbar">
+                <input type="search" value={gameQuery} placeholder="Search teams or games"
+                  onChange={e => setGameQuery(e.target.value)} aria-label="Search games" />
+                {gameQuery && (
+                  <button className="searchclear" onClick={() => setGameQuery("")}
+                    aria-label="Clear game search">×</button>
+                )}
+              </div>
+              <div className="seg" role="group" aria-label="Game timing">
+                <button aria-pressed={timing === "pre"} onClick={() => setTiming("pre")}>
+                  Pre-market ({preGames.length})
+                </button>
+                <button aria-pressed={timing === "live"} onClick={() => setTiming("live")}>
+                  Live ({liveGames.length})
+                </button>
+              </div>
+            </div>
+
+            <p className="note">
+              Showing the best <strong>moneyline</strong> price on each side. Open a game for every
+              book, plus spreads, totals and props.
+              {homeState !== "ALL" && ` Limited to books operating in ${stateName}.`}
+            </p>
+
+            {timing === "live" && (
+              <p className="note" style={{marginTop:-8}}>
+                These games are underway, priced from the last pull. In-play lines move fast — refresh often.
+              </p>
+            )}
+
+            {error && <div className="alert"><span aria-hidden="true">⚠</span><span>{error}</span></div>}
+            {loading && games.length === 0 && <div className="blank">Pulling prices…</div>}
+            {!loading && visibleGames.length === 0 && !error && (
+              <div className="blank">
+                {gameQuery
+                  ? `Nothing matching "${gameQuery}" in this league right now.`
+                  : homeState !== "ALL"
+                  ? `No games have books available in ${stateName}. Switch to all books nationwide in Settings.`
+                  : timing === "live" ? "Nothing is live right now in this league."
+                  : "No upcoming games in this league right now."}
+              </div>
+            )}
+
+            {groupedByDay.map(group => (
+              <React.Fragment key={group.label}>
+                <div className="daybar">
+                  <span>{group.label}</span>
+                  <i></i>
+                  <em>{group.games.length} {group.games.length === 1 ? "game" : "games"}</em>
+                </div>
+                {group.games.map(g => (
+                  <GameCard key={g.id} game={g} onAddLeg={addLeg} parlayPickedSet={parlayPickedSet}
+                    isLive={timing === "live"} account={account}
+                    homeState={homeState} onPropsLoaded={cacheProps} />
+                ))}
+              </React.Fragment>
+            ))}
+
+            {allSports.length > 0 && <Diagnostics allSports={allSports} shownSports={sports} />}
+          </React.Fragment>
+        )}
+
+        {tab === "players" && (
+          <PlayerSearch account={account} sports={sports} sportKey={sportKey}
+            onPickSport={setSportKey} homeState={homeState}
+            onAddLeg={addLeg} parlayPickedSet={parlayPickedSet}
+            onSignIn={() => setAuthOpen(true)} onPropsLoaded={cacheProps} />
+        )}
+        {tab === "dashboard" && (
+          <Dashboard account={account} onResolve={resolveBet}
+            onCheckResults={checkResults} checking={checkingResults} />
+        )}
+        {tab === "pricing" && <PricingPage account={account} onSignIn={() => setAuthOpen(true)} />}
+        {tab === "info" && <InfoPage />}
+      </main>
+
+      <SiteFooter />
+
+      <AuthDialog account={account} open={authOpen} onClose={() => setAuthOpen(false)} />
+      {account.signedIn && <SettingsPopover account={account} sports={sports} />}
+
+      {(tab === "board" || tab === "players") && parlay.length > 0 && (
+        <section className="tray" aria-label="Parlay comparison" data-collapsed={!trayOpen}>
+          <div className="shell" style={{paddingBlock: trayOpen ? "17px" : "0"}}>
+
+            {!trayOpen && (
+              <div className="tray-peek">
+                <div className="tray-peek-left">
+                  <h3 className="display">Compare parlay</h3>
+                  <span className="tray-count">{parlay.length} {parlay.length === 1 ? "leg" : "legs"}</span>
+                  {(() => {
+                    const best = rankedComparison.find(r => r.complete);
+                    return best
+                      ? <span className="best">{best.title} ${best.boostedPayout.toFixed(2)}</span>
+                      : null;
+                  })()}
+                </div>
+                <button className="tray-toggle" onClick={() => setTrayOpen(true)}
+                  aria-expanded="false">▲ Show</button>
+              </div>
+            )}
+
+            {trayOpen && (
+            <React.Fragment>
+            <div className="tray-head">
+              <h3>
+                Compare parlay
+                <span className="tray-count">{parlay.length} {parlay.length === 1 ? "leg" : "legs"}</span>
+              </h3>
+              <div style={{display:"flex", alignItems:"center", gap:12}}>
+                <button className="linkish" onClick={() => setParlay([])}>Clear</button>
+                <button className="tray-toggle" onClick={() => setTrayOpen(false)}
+                  aria-expanded="true">▼ Minimise</button>
+              </div>
+            </div>
+            <p className="note" style={{margin:"4px 0 0"}}>
+              Priced at the books you picked from — not every book on the board.
+            </p>
+
+            <div className="legs">
+              {parlay.map(leg => (
+                <span className="leg" key={leg.id}>
+                  <span>{leg.matchup}</span>
+                  <b>{leg.label}</b>
+                  <em>{leg.pickedBookTitle}</em>
+                  <button onClick={() => removeLeg(leg.id)} aria-label={`Remove ${leg.label}`}>×</button>
+                </span>
+              ))}
+            </div>
+
+            <div className="field" style={{maxWidth:130}}>
+              <label htmlFor="stake">Stake</label>
+              <input id="stake" type="number" inputMode="decimal" value={stake}
+                onChange={e => setStake(e.target.value)} />
+            </div>
+
+            {rankedComparison.map((row,i) => (
+              <div className="quote" key={row.bookKey}
+                data-winner={row.complete && i === 0} data-partial={!row.complete}>
+                <div className="quote-book">
+                  {row.complete && i === 0 && <span className="flag">Pays most</span>}
+                  <span>{row.title}</span>
+                  {row.complete && <span className="quote-odds">{decimalToAmerican(row.decimal)}</span>}
+                </div>
+                {row.complete ? (
+                  <div className="quote-right">
+                    <span className="boost">
+                      <label htmlFor={`b-${row.bookKey}`}>Your boost %</label>
+                      <input id={`b-${row.bookKey}`} type="number" inputMode="decimal" placeholder="0"
+                        value={bookBoosts[row.bookKey] ?? ""}
+                        onChange={e => setBookBoosts(p => ({ ...p, [row.bookKey]: e.target.value }))} />
+                    </span>
+                    <span className="payout">${row.boostedPayout.toFixed(2)}<small>returns</small></span>
+                  </div>
+                ) : (
+                  <span style={{fontSize:12.5, color:"var(--gold)"}}>
+                    No price for {row.missing.join(", ")}
+                  </span>
+                )}
+              </div>
+            ))}
+
+            <button className="btn btn-solid" style={{marginTop:13}}
+              onClick={logBestToLedger} disabled={!rankedComparison.some(r => r.complete)}>
+              Save best price to ledger
+            </button>
+            {logMsg && <p className="fine" style={{marginTop:7}}>{logMsg}</p>}
+            </React.Fragment>
+            )}
+          </div>
+        </section>
+      )}
+    </React.Fragment>
+  );
+}
+
+/* ---------------- sport tiles ---------------- */
+function SportTiles({ sports, sportKey, onPick, favorites, onToggleFavorite, canFavorite }){
+  const [showAll, setShowAll] = useState(false);
+
+  const byKey = Object.fromEntries(sports.map(s => [s.key, s]));
+
+  // Pinned: the five primaries (in order) plus anything the user starred.
+  const pinnedKeys = [
+    ...PRIMARY_SPORTS.filter(k => byKey[k]),
+    ...favorites.filter(k => byKey[k] && !PRIMARY_SPORTS.includes(k)),
+  ];
+  const restKeys = sports.map(s => s.key).filter(k => !pinnedKeys.includes(k));
+
+  const Tile = ({ s }) => {
+    const on = favorites.includes(s.key);
+    return (
+      <button className="tile" aria-pressed={sportKey === s.key} onClick={() => onPick(s.key)}>
+        {canFavorite && (
+          <span className="fav-star" role="button" tabIndex={0} data-on={on}
+            aria-label={on ? `Unfavorite ${sportLabel(s)}` : `Favorite ${sportLabel(s)}`}
+            onClick={e => { e.stopPropagation(); onToggleFavorite(s.key); }}
+            onKeyDown={e => { if(e.key === "Enter" || e.key === " "){ e.preventDefault(); e.stopPropagation(); onToggleFavorite(s.key); } }}>
+            {on ? "★" : "☆"}
+          </span>
+        )}
+        <span className="tile-name">{sportLabel(s)}</span>
+        <span className="tile-sub">{s.group}</span>
+      </button>
+    );
+  };
+
+  return (
+    <div className="sportbar">
+      <div className="tiles">
+        {pinnedKeys.map(k => <Tile key={k} s={byKey[k]} />)}
+        {restKeys.length > 0 && (
+          <button className="tile-more" onClick={() => setShowAll(v => !v)} aria-expanded={showAll}>
+            {showAll ? "Fewer sports" : `All sports (${restKeys.length})`}
+          </button>
+        )}
+      </div>
+      {showAll && restKeys.length > 0 && (
+        <div className="tile-drawer">
+          {restKeys.map(k => <Tile key={k} s={byKey[k]} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------- game card ---------------- */
+function GameCard({ game, onAddLeg, parlayPickedSet, isLive, account, homeState, onPropsLoaded }){
+  const kickoff = new Date(game.commence_time);
+  const timeStr = kickoff.toLocaleTimeString(undefined, { hour:"numeric", minute:"2-digit" });
+
+  const bestML = useMemo(() => {
+    const byTeam = {};
+    const hm = headlineMarket(game.sport_key);
+    for(const bk of game.bookmakers){
+      const mkt = bk.markets.find(m => m.key === hm);
+      if(!mkt) continue;
+      for(const oc of mkt.outcomes){
+        if(!byTeam[oc.name] || oc.price > byTeam[oc.name].price){
+          byTeam[oc.name] = { price: oc.price, book: bk.title };
+        }
+      }
+    }
+    return byTeam;
+  }, [game]);
+
+  if(game.bookmakers.length === 0) return null;
+
+  const allTeams = Object.entries(bestML);
+  // Outright fields (golf, NASCAR) can list dozens of runners — show the shortest
+  // prices and let the expanded view carry the rest.
+  const outright = isOutright(game.sport_key);
+  const teams = outright
+    ? [...allTeams].sort((a,b) => americanToDecimal(a[1].price) - americanToDecimal(b[1].price)).slice(0,4)
+    : allTeams;
+  const hiddenCount = allTeams.length - teams.length;
+  const topPrice = Math.max(...teams.map(([,v]) => v.price));
+
+  return (
+    <article className="game">
+      <div className="game-top">
+        <h3 className="matchup">
+          {outright ? game.sport_title || "Field" : <React.Fragment>{game.away_team} <i>at</i> {game.home_team}</React.Fragment>}
+        </h3>
+        <div className="when">
+          {isLive && <span className="livetag">Live</span>}
+          <time dateTime={game.commence_time}>{timeStr}</time>
+        </div>
+      </div>
+
+      <div className="prices">
+        {teams.map(([team, v]) => {
+          // On a two-sided game, "best" means the best price available on that side.
+          // On an outright field it would just mean "the favorite", which isn't the
+          // same thing at all — so we don't flag it.
+          const flag = !outright && teams.length > 1 && v.price === topPrice;
+          return (
+            <div className="price" key={team} data-best={flag}>
+              {flag && <span className="best-flag">Best</span>}
+              <span className="price-team">{team}</span>
+              <span className="price-num">{fmtAmerican(v.price)}</span>
+              <span className="price-book">{v.book}</span>
+            </div>
+          );
+        })}
+      </div>
+      {hiddenCount > 0 && (
+        <p className="fine" style={{margin:"-6px 17px 12px"}}>
+          Shortest {teams.length} of {allTeams.length} in the field — open for the rest.
+        </p>
+      )}
+
+      <details>
+        <summary>All books, spreads, totals &amp; props</summary>
+        <div className="deep">
+          {Object.entries(marketsMapFor(game.sport_key)).map(([mKey, mLabel]) => (
+            <MarketTable key={mKey} game={game} marketKey={mKey} marketLabel={mLabel}
+              onAddLeg={onAddLeg} parlayPickedSet={parlayPickedSet} />
+          ))}
+          <PropsSection game={game} account={account} homeState={homeState}
+            onAddLeg={onAddLeg} parlayPickedSet={parlayPickedSet} onPropsLoaded={onPropsLoaded} />
+        </div>
+      </details>
+    </article>
+  );
+}
+
+function MarketTable({ game, marketKey, marketLabel, onAddLeg, parlayPickedSet }){
+  const bestByOutcome = {};
+  for(const bk of game.bookmakers){
+    const mk = bk.markets.find(m => m.key === marketKey);
+    if(!mk) continue;
+    for(const oc of mk.outcomes){
+      const k = outcomeKeyOf(oc);
+      if(!bestByOutcome[k] || oc.price > bestByOutcome[k].price){
+        bestByOutcome[k] = { price: oc.price, book: bk.key };
+      }
+    }
+  }
+
+  const order = [];
+  const seen = new Set();
+  for(const bk of game.bookmakers){
+    const mk = bk.markets.find(m => m.key === marketKey);
+    if(!mk) continue;
+    for(const oc of mk.outcomes){
+      const k = outcomeKeyOf(oc);
+      if(!seen.has(k)){ seen.add(k); order.push({ k, oc }); }
+    }
+  }
+  if(order.length === 0) return null;
+
+  return (
+    <div className="market">
+      <div className="market-h">{marketLabel}</div>
+      <div className="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Book</th>
+              {order.map(({k, oc}) => <th scope="col" key={k}>{outcomeLabel(marketKey, oc)}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {game.bookmakers.map(bk => {
+              const mk = bk.markets.find(m => m.key === marketKey);
+              if(!mk) return null;
+              return (
+                <tr key={bk.key}>
+                  <td className="bookcell">{bk.title}</td>
+                  {order.map(({k}) => {
+                    const oc = mk.outcomes.find(o => outcomeKeyOf(o) === k);
+                    if(!oc) return <td key={k}><span className="nil">—</span></td>;
+                    const isBest = bestByOutcome[k] && bestByOutcome[k].book === bk.key;
+                    const picked = parlayPickedSet.has(`${bk.key}|${game.id}-${marketKey}-${k}`);
+                    return (
+                      <td key={k}>
+                        <button className="odds" data-best={isBest} data-picked={picked}
+                          onClick={() => onAddLeg(game, bk, mk, oc)}
+                          aria-label={`${picked ? "Remove" : "Add"} ${bk.title} ${outcomeLabel(marketKey, oc)} at ${fmtAmerican(oc.price)}`}>
+                          {fmtAmerican(oc.price)}
+                        </button>
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function PropsSection({ game, account, homeState, onAddLeg, parlayPickedSet, onPropsLoaded }){
+  const [loaded, setLoaded] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+  const [selected, setSelected] = useState("");
+
+  /* V0.94 — props are NFL/NBA/NHL only. A league with no player markets defined
+     gets no props section at all, rather than falling through to the game-level
+     alternate markets and looking half-supported. */
+  const playerMarkets = PROP_MARKETS[game.sport_key] || [];
+  const markets = playerMarkets.length > 0
+    ? [...playerMarkets, ...GAME_PROP_MARKETS]
+    : [];
+  const isPro = account.isPro;
+  const outOfQuota = !isPro && account.gameSearchesLeft <= 0;
+
+  const load = async (marketKey) => {
+    if(!account.signedIn){ setErr("Sign in to load props."); return; }
+    if(outOfQuota){ return; }
+    setLoading(true); setErr(""); setSelected(marketKey);
+    try{
+      const res = await fetch(
+        `${ODDS_BASE}/v4/sports/${game.sport_key}/events/${game.id}/odds/` +
+        `?regions=us,us2&markets=${marketKey}&oddsFormat=american`);
+      if(!res.ok) throw new Error(await apiError(res));
+      const data = await res.json();
+      const books = (data.bookmakers || []).filter(bk => {
+        if(BOOKMAKER_BLACKLIST.includes(bk.key)) return false;
+        if(homeState === "ALL") return true;
+        const st = BOOK_STATES[bk.key];
+        return st ? st.includes(homeState) : false;
+      });
+      const payload = { ...data, bookmakers: books, sport_key: game.sport_key,
+                        home_team: game.home_team, away_team: game.away_team };
+      setLoaded(payload);
+      onPropsLoaded && onPropsLoaded(game.id, payload);
+      if(!isPro) await account.consumePropRefresh("game");
+    }catch(e){
+      setErr(e.message); setLoaded(null);
+    }finally{
+      setLoading(false);
+    }
+  };
+
+  if(markets.length === 0) return null;
+
+  return (
+    <div className="market">
+      <div className="market-h">Player &amp; game props</div>
+
+      {!account.signedIn ? (
+        <p className="locked" style={{margin:0}}>Sign in to load props for this game.</p>
+      ) : (
+        <React.Fragment>
+          {!isPro && (
+            <p className="quota-line">
+              <span className="quota-pip" aria-hidden="true">
+                {Array.from({length: FREE_GAME_SEARCHES}).map((_,i) => (
+                  <i key={i} data-used={i < account.gameSearchesUsed} />
+                ))}
+              </span>
+              <span>
+                {account.gameSearchesLeft > 0
+                  ? `${account.gameSearchesLeft} of ${FREE_GAME_SEARCHES} game prop loads left today`
+                  : "Out of game prop loads for today — resets at midnight"}
+              </span>
+            </p>
+          )}
+
+          <div className="chipset">
+            {markets.map(([k,label]) => (
+              <button className="chip" key={k} aria-pressed={selected === k}
+                onClick={() => load(k)} disabled={outOfQuota}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {outOfQuota && (
+            <p className="locked" style={{margin:0}}>
+              You've used today's {FREE_GAME_SEARCHES} game prop loads. Pro removes the cap — or come back tomorrow.
+            </p>
+          )}
+
+          {loading && <p className="fine" style={{margin:0}}>Loading {selected.replace(/_/g," ")}…</p>}
+          {err && <p className="locked" style={{margin:0, borderStyle:"solid", color:"var(--rust)"}}>{err}</p>}
+          {loaded && !loading && (
+            loaded.bookmakers.length === 0
+              ? <p className="fine" style={{margin:0}}>
+                  No books posting this{homeState !== "ALL" ? " in your state" : ""}.
+                </p>
+              : <PropMarket event={loaded} marketKey={selected}
+                  marketLabel={(markets.find(([k]) => k === selected) || ["",""])[1]}
+                  onAddLeg={onAddLeg} parlayPickedSet={parlayPickedSet} />
+          )}
+        </React.Fragment>
+      )}
+    </div>
+  );
+}
+
+/* Props are two-dimensional: books post different LINES as well as different prices,
+   so "best" needs both. We compare prices at the most commonly posted line, and call
+   out books sitting on a different line separately rather than pretending they're
+   interchangeable. */
+function PropMarket({ event, marketKey, marketLabel, onAddLeg, parlayPickedSet, playerFilter }){
+  /* When the search matched a player name, narrow to that player so the table
+     isn't every quarterback in the game. A team match passes no filter, since
+     the point there is to see the whole slate. */
+  const view = useMemo(() => {
+    if(!playerFilter) return event;
+    const f = playerFilter.toLowerCase();
+    const keep = (oc) => (oc.description || oc.name || "").toLowerCase().includes(f);
+    return {
+      ...event,
+      bookmakers: event.bookmakers
+        .map(bk => ({ ...bk, markets: (bk.markets || [])
+          .map(m => ({ ...m, outcomes: (m.outcomes || []).filter(keep) }))
+          .filter(m => m.outcomes.length > 0) }))
+        .filter(bk => bk.markets.length > 0),
+    };
+  }, [event, playerFilter]);
+
+  const players = useMemo(() => {
+    const map = new Map();
+    for(const bk of view.bookmakers){
+      const mk = bk.markets.find(m => m.key === marketKey);
+      if(!mk) continue;
+      for(const oc of mk.outcomes){
+        const who = oc.description || oc.name;
+        if(!map.has(who)) map.set(who, []);
+        map.get(who).push({ bk, mk, oc });
+      }
+    }
+    return map;
+  }, [view, marketKey]);
+
+  // Markets without an Over/Under shape (anytime TD, outright winners) use the plain table.
+  const twoSided = useMemo(() => {
+    for(const rows of players.values()){
+      if(rows.some(r => r.oc.name === "Over" || r.oc.name === "Under")) return true;
+      break;
+    }
+    return false;
+  }, [players]);
+
+  if(players.size === 0) return null;
+  if(!twoSided){
+    return <MarketTable game={view} marketKey={marketKey} marketLabel={marketLabel}
+      onAddLeg={onAddLeg} parlayPickedSet={parlayPickedSet} />;
+  }
+
+  const bookCount = view.bookmakers.length;
+
+  return (
+    <div>
+      <div className="market-h" style={{marginTop:4}}>
+        {marketLabel}
+        <span className="depth">
+          {bookCount} book{bookCount === 1 ? "" : "s"} posting
+          {bookCount <= 2 ? " · thin market" : ""}
+        </span>
+      </div>
+      {[...players.entries()].map(([who, rows]) => (
+        <PropPlayer key={who} who={who} rows={rows} event={view} marketKey={marketKey}
+          onAddLeg={onAddLeg} parlayPickedSet={parlayPickedSet} />
+      ))}
+      <p className="fine">
+        Best price is compared at the line most books are posting. A book on a different number isn't
+        a like-for-like swap — a lower Over line is easier to hit, so it usually pays less.
+        {bookCount <= 2 && " Only a couple of books price this market at all, so there isn't much to compare — that's the market, not a missing feed."}
+      </p>
+    </div>
+  );
+}
+
+function PropPlayer({ who, rows, event, marketKey, onAddLeg, parlayPickedSet }){
+  // Group by book, splitting the two sides.
+  const byBook = new Map();
+  for(const r of rows){
+    if(!byBook.has(r.bk.key)) byBook.set(r.bk.key, { bk:r.bk, mk:r.mk, over:null, under:null });
+    const slot = byBook.get(r.bk.key);
+    if(r.oc.name === "Over") slot.over = r.oc;
+    else if(r.oc.name === "Under") slot.under = r.oc;
+  }
+  const books = [...byBook.values()];
+
+  const modalLine = (side) => {
+    const counts = {};
+    for(const b of books){
+      const oc = b[side];
+      if(!oc || oc.point == null) continue;
+      counts[oc.point] = (counts[oc.point] || 0) + 1;
+    }
+    const entries = Object.entries(counts);
+    if(entries.length === 0) return null;
+    entries.sort((a,b) => b[1] - a[1]);
+    return parseFloat(entries[0][0]);
+  };
+  const overLine = modalLine("over");
+  const underLine = modalLine("under");
+
+  const bestAt = (side, line) => {
+    let best = null;
+    for(const b of books){
+      const oc = b[side];
+      if(!oc || oc.point !== line) continue;
+      if(!best || oc.price > best.price) best = { price: oc.price, key: b.bk.key };
+    }
+    return best;
+  };
+  const bestOver = overLine != null ? bestAt("over", overLine) : null;
+  const bestUnder = underLine != null ? bestAt("under", underLine) : null;
+
+  const Cell = ({ b, side, modal, best }) => {
+    const oc = b[side];
+    if(!oc) return <td><span className="nil">—</span></td>;
+    const altLine = oc.point != null && modal != null && oc.point !== modal;
+    const isBest = best && best.key === b.bk.key && !altLine;
+    const k = outcomeKeyOf(oc);
+    const picked = parlayPickedSet.has(`${b.bk.key}|${event.id}-${marketKey}-${k}`);
+    return (
+      <td>
+        <button className="odds" data-best={isBest} data-picked={picked}
+          onClick={() => onAddLeg(event, b.bk, b.mk, oc)}
+          aria-label={`${picked ? "Remove" : "Add"} ${b.bk.title} ${who} ${side} ${oc.point} at ${fmtAmerican(oc.price)}`}>
+          <span style={{opacity:.72, marginRight:5}}>{oc.point}</span>{fmtAmerican(oc.price)}
+        </button>
+        {altLine && <span className="fine" style={{display:"block", marginTop:1}}>alt line</span>}
+      </td>
+    );
+  };
+
+  return (
+    <div style={{marginBottom:16}}>
+      <div style={{fontSize:13.5, fontWeight:700, marginBottom:5}}>
+        {who}
+        {overLine != null && (
+          <span style={{fontFamily:"var(--data)", fontSize:11.5, color:"var(--slate)", fontWeight:400, marginLeft:8}}>
+            most books at {overLine}
+          </span>
+        )}
+      </div>
+      <div className="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Book</th>
+              <th scope="col">Over</th>
+              <th scope="col">Under</th>
+            </tr>
+          </thead>
+          <tbody>
+            {books.map(b => (
+              <tr key={b.bk.key}>
+                <td className="bookcell">{b.bk.title}</td>
+                <Cell b={b} side="over" modal={overLine} best={bestOver} />
+                <Cell b={b} side="under" modal={underLine} best={bestUnder} />
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/* Shows the raw sport list the API returned vs. what we chose to display.
+   The fastest way to answer "why isn't <league> showing up?" — if a key isn't
+   in the left column, the feed isn't carrying it on this plan. */
+function Diagnostics({ allSports, shownSports }){
+  const shownKeys = new Set(shownSports.map(s => s.key));
+  const hidden = allSports.filter(s => !shownKeys.has(s.key));
+  return (
+    <details className="game" style={{marginTop:26, padding:"0 17px"}}>
+      <summary style={{padding:"12px 0", cursor:"pointer", fontSize:12, fontWeight:600, color:"var(--slate)"}}>
+        Diagnostics — what the odds feed is actually returning
+      </summary>
+      <div style={{paddingBottom:18}}>
+        <p className="fine" style={{marginTop:0}}>
+          {allSports.length} sports returned by your API key. {shownSports.length} shown here
+          (active, and on our US allowlist). If a league you expect is missing from both columns,
+          the feed doesn't carry it on your current plan — that's a data source limit, not a bug
+          in this app.
+        </p>
+        <div style={{display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(230px,1fr))", gap:14}}>
+          <div>
+            <div className="market-h">Shown ({shownSports.length})</div>
+            {shownSports.map(s => (
+              <div className="cmp" key={s.key}>
+                <b>{sportLabel(s)}</b>
+                <span className="implied">{s.key}</span>
+              </div>
+            ))}
+          </div>
+          <div>
+            <div className="market-h">Returned but filtered out ({hidden.length})</div>
+            {hidden.length === 0 && <p className="fine">Nothing filtered.</p>}
+            {hidden.slice(0,40).map(s => (
+              <div className="cmp" key={s.key}>
+                <span style={{color:"var(--slate)"}}>{s.title}</span>
+                <span className="implied">{s.key}{s.active ? "" : " · off-season"}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </details>
+  );
+}
+
+/* ---------------- player prop search ----------------
+   V0.92 rewrite. The old version failed silently for three reasons:
+     1. It had no sport selector — it inherited whichever league the Board tab
+        happened to be on. Searching "Josh Allen" while MLB was selected scanned
+        MLB games for an NFL quarterback and found nothing, with no explanation.
+     2. `if(!res.ok) continue;` swallowed every API error, so a rejected request
+        looked identical to "that player has no props."
+     3. It scanned only the first 6 games and first 4 markets, silently.
+   All three are now visible and under the user's control. */
+function PlayerSearch({ account, sports, sportKey, onPickSport, homeState,
+                        onAddLeg, parlayPickedSet, onSignIn, onPropsLoaded }){
+  const [query, setQuery] = useState("");
+  const [scanning, setScanning] = useState(null); // null | "query" | "all"
+  const [results, setResults] = useState(null);
+  const [err, setErr] = useState("");
+  const [diag, setDiag] = useState([]);
+  const [gameLimit, setGameLimit] = useState(5);
+  const [picked, setPicked] = useState([]);
+  const [events, setEvents] = useState([]);
+  const [eventsLoading, setEventsLoading] = useState(true);
+  const [eventsErr, setEventsErr] = useState("");
+  const [reloadTick, setReloadTick] = useState(0);
+
+  const propMarkets = PROP_MARKETS[sportKey] || [];
+  // Only leagues that actually carry player props — picking golf here would
+  // just produce a confusing empty result.
+  const propSports = sports.filter(s => (PROP_MARKETS[s.key] || []).length > 0);
+  const currentSport = sports.find(s => s.key === sportKey);
+  const leagueName = currentSport ? sportLabel(currentSport) : "this league";
+
+  /* A <select> whose value matches no <option> displays the FIRST option while
+     keeping its real value. So if the board sits on a league with no props
+     (NCAAF, MLB), this dropdown would show "NFL" while sportKey was still
+     NCAAF — and we'd fetch the wrong league's schedule behind a label that
+     said otherwise. Snap to a supported league so what's shown is what's used. */
+  useEffect(() => {
+    if(propSports.length === 0) return;
+    if(!propSports.some(s => s.key === sportKey)) onPickSport(propSports[0].key);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [propSports, sportKey]);
+
+  // Default to the first three markets whenever the league changes.
+  useEffect(() => {
+    setPicked((PROP_MARKETS[sportKey] || []).slice(0,3).map(([k]) => k));
+    setResults(null); setDiag([]); setErr("");
+  }, [sportKey]);
+
+  const isPro = account.isPro;
+  const searchesLeft = account.gameSearchesLeft;
+  const scansLeft = account.fullScansLeft;
+  const outOfSearches = !isPro && searchesLeft <= 0;
+  const outOfScans = !isPro && scansLeft <= 0;
+
+  /* V0.96 — this tab fetches its own event list instead of borrowing the
+     board's. Borrowing caused two bugs: scanning one league's event ids against
+     another league's endpoint (404 on every request, V0.94), and then a
+     permanent "loading…" when the board never caught up (V0.95). The /events
+     endpoint costs no API quota, so owning the list here is free and the two
+     tabs can't fall out of step. */
+  useEffect(() => {
+    if(!sportKey) return;
+    let cancelled = false;
+    (async () => {
+      setEventsLoading(true); setEventsErr(""); setEvents([]);
+      try{
+        const res = await fetch(
+          `${ODDS_BASE}/v4/sports/${sportKey}/events/`);
+        if(!res.ok) throw new Error(await apiError(res));
+        const data = await res.json();
+        if(cancelled) return;
+        const now = Date.now();
+        setEvents((data || [])
+          .filter(e => e.sport_key === sportKey && new Date(e.commence_time).getTime() > now)
+          .sort((a,b) => new Date(a.commence_time) - new Date(b.commence_time)));
+      }catch(e){
+        if(!cancelled) setEventsErr(e.message);
+      }finally{
+        if(!cancelled) setEventsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [sportKey, reloadTick]);
+
+  const candidates = events.slice(0, gameLimit);
+  // The Odds API bills markets × regions per call, and we request two regions.
+  const estCredits = candidates.length * picked.length * 2;
+
+  const labelFor = (k) =>
+    (propMarkets.find(([mk]) => mk === k) || [k, k.replace(/_/g," ")])[1];
+
+  const toggleMarket = (k) =>
+    setPicked(p => p.includes(k) ? p.filter(x => x !== k) : [...p, k]);
+
+  /* mode "query" filters to a player or team; mode "all" just pulls everything
+     posted for the scanned games, so you can browse without knowing a name. */
+  const runScan = async (mode) => {
+    const q = mode === "all" ? "" : query.trim().toLowerCase();
+    if(mode !== "all" && q.length < 3){
+      setErr("Type at least three letters of a player or team name — or use Scan upcoming to browse everything.");
+      return;
+    }
+    if(!account.signedIn){ onSignIn(); return; }
+    if(mode === "all" && outOfScans) return;
+    if(mode !== "all" && outOfSearches) return;
+    if(picked.length === 0){ setErr("Pick at least one prop market to search."); return; }
+    if(eventsLoading){
+      setErr(`Still loading the ${leagueName} schedule — give it a second.`);
+      return;
+    }
+    if(candidates.length === 0){
+      setErr(eventsErr || `No upcoming ${leagueName} games on the schedule right now.`);
+      return;
+    }
+
+    setScanning(mode); setErr(""); setResults(null); setDiag([]);
+    const rows = [], log = [];
+    const marketParam = picked.join(",");
+    let okCount = 0;
+
+    try{
+      for(const g of candidates){
+        const matchup = `${g.away_team} @ ${g.home_team}`;
+        let res;
+        try{
+          res = await fetch(
+            `${ODDS_BASE}/v4/sports/${sportKey}/events/${g.id}/odds/` +
+            `?regions=us,us2&markets=${marketParam}&oddsFormat=american`);
+        }catch(netErr){
+          log.push({ matchup, ok:false, note:`couldn't reach the API — ${netErr.message}` });
+          continue;
+        }
+
+        if(!res.ok){
+          // Surface what the API actually said instead of hiding it.
+          log.push({ matchup, ok:false, note: await apiError(res) });
+          continue;
+        }
+
+        okCount++;
+        const data = await res.json();
+        const books = (data.bookmakers || []).filter(bk => {
+          if(BOOKMAKER_BLACKLIST.includes(bk.key)) return false;
+          if(homeState === "ALL") return true;
+          const st = BOOK_STATES[bk.key];
+          return st ? st.includes(homeState) : false;
+        });
+
+        if(books.length === 0){
+          log.push({ matchup, ok:true, note: homeState === "ALL"
+            ? "no books posting these markets" : "no books available in your state" });
+          continue;
+        }
+
+        // A query can match the game itself (a team name) or a player in it.
+        // In "all" mode everything posted counts.
+        const wholeGame = mode === "all" || matchup.toLowerCase().includes(q);
+        const hits = new Set();
+        for(const bk of books){
+          for(const m of (bk.markets || [])){
+            if(wholeGame){ hits.add(m.key); continue; }
+            for(const o of (m.outcomes || [])){
+              if((o.description || "").toLowerCase().includes(q)) hits.add(m.key);
+            }
+          }
+        }
+
+        log.push({ matchup, ok:true, note:
+          hits.size === 0 ? `${books.length} books posting, no match in them`
+          : mode === "all" ? `${hits.size} market${hits.size === 1 ? "" : "s"} posted`
+          : wholeGame ? `team matched — showing all ${hits.size} market${hits.size === 1 ? "" : "s"}`
+          : `found in ${hits.size} market${hits.size === 1 ? "" : "s"}` });
+
+        const payload = { ...data, bookmakers: books, sport_key: sportKey,
+                          home_team: g.home_team, away_team: g.away_team };
+        if(hits.size > 0) onPropsLoaded && onPropsLoaded(g.id, payload);
+
+        for(const mk of hits){
+          rows.push({
+            marketKey: mk, label: labelFor(mk), matchup,
+            // whole-game results show every player; a name match narrows to one
+            playerFilter: wholeGame ? null : q,
+            event: payload,
+          });
+        }
+      }
+
+      if(!isPro) await account.consumePropRefresh(mode === "all" ? "scan" : "game");
+      setDiag(log);
+      setResults({ q, rows });
+
+      if(rows.length === 0){
+        if(okCount === 0){
+          setErr("Every request was rejected by the odds API — open the scan detail below for the exact reason. Nothing was wrong with your search term.");
+        }else if(mode === "all"){
+          setErr(`No books are posting these markets yet for the ${candidates.length} ${leagueName} game${candidates.length === 1 ? "" : "s"} scanned. Props usually go up closer to game time — try again nearer kickoff, or add more markets.`);
+        }else{
+          setErr(`Nothing matching "${query.trim()}" in the ${candidates.length} ${leagueName} game${candidates.length === 1 ? "" : "s"} scanned — that covers both player and team names. Check the spelling, scan more games, or add more markets.`);
+        }
+      }
+    }catch(e){
+      setErr(e.message);
+    }finally{
+      setScanning(null);
+    }
+  };
+
+  return (
+    <React.Fragment>
+      <div className="page-head">
+        <p className="eyebrow">Player props</p>
+        <h1 className="page-title">Find a player or game.<br/>Find the best number.</h1>
+        <p className="page-lede">
+          Search a player to see every book's line and price side by side, or a team to pull up the
+          whole game. No one in mind? Hit <strong>Scan upcoming</strong> to browse everything posted.
+          A better price and a better line aren't the same thing — this shows both.
+        </p>
+      </div>
+
+      <div className="toolbar">
+        <select className="select-native" value={sportKey}
+          onChange={e => onPickSport(e.target.value)} aria-label="League to search">
+          {propSports.map(s => <option key={s.key} value={s.key}>{sportLabel(s)}</option>)}
+        </select>
+        <div className="searchbar">
+          <input type="search" value={query} placeholder="Player or team — e.g. Josh Allen, or Chiefs"
+            onChange={e => setQuery(e.target.value)}
+            onKeyDown={e => { if(e.key === "Enter") runScan("query"); }}
+            aria-label="Search for a player or game" />
+          {query && <button className="searchclear"
+            onClick={() => { setQuery(""); setResults(null); setErr(""); setDiag([]); }}
+            aria-label="Clear search">×</button>}
+        </div>
+        <button className="btn btn-solid" onClick={() => runScan("query")}
+          disabled={scanning || outOfSearches}>
+          {scanning === "query" ? "Searching…" : "Search"}
+        </button>
+        <button className="btn" onClick={() => runScan("all")}
+          disabled={scanning || outOfScans}
+          title="Pull every posted prop for the games below — no search term needed">
+          {scanning === "all" ? "Scanning…" : "Scan upcoming"}
+        </button>
+      </div>
+
+      {propSports.length === 0 ? (
+        <div className="blank">No leagues with player props are in season right now.</div>
+      ) : (
+        <React.Fragment>
+          <div className="scan-setup">
+            <div className="market-h">Markets to search</div>
+            <div className="chipset">
+              {propMarkets.map(([k,label]) => (
+                <button className="chip" key={k} aria-pressed={picked.includes(k)}
+                  onClick={() => toggleMarket(k)}>{label}</button>
+              ))}
+            </div>
+
+            <div className="scan-row">
+              <label htmlFor="ps-games">Scan</label>
+              <select id="ps-games" className="select-native" value={gameLimit}
+                onChange={e => setGameLimit(Number(e.target.value))}>
+                <option value={3}>3 games</option>
+                <option value={5}>5 games</option>
+                <option value={10}>10 games</option>
+                <option value={25}>every loaded game</option>
+              </select>
+              <span className="scan-note">
+                {eventsLoading ? `loading the ${leagueName} schedule…`
+                  : eventsErr ? eventsErr
+                  : events.length === 0 ? `no upcoming ${leagueName} games scheduled`
+                  : `${candidates.length} of ${events.length} upcoming ${leagueName} games`}
+                {!eventsLoading && !eventsErr && picked.length > 0 && candidates.length > 0 &&
+                  ` · about ${estCredits} API credits`}
+              </span>
+              {!eventsLoading && (eventsErr || events.length === 0) && (
+                <button className="linkish" onClick={() => setReloadTick(n => n + 1)}>
+                  Retry
+                </button>
+              )}
+            </div>
+          </div>
+
+          {!isPro && account.signedIn && (
+            <p className="quota-note">
+              Free plan today: <strong>{searchesLeft} of {FREE_GAME_SEARCHES}</strong> game searches
+              and <strong>{scansLeft} of {FREE_FULL_SCANS}</strong> full scan{FREE_FULL_SCANS === 1 ? "" : "s"} left.
+              Both reset at midnight. Pro lifts the cap.
+            </p>
+          )}
+
+          {outOfSearches && outOfScans && (
+            <div className="blank">
+              You've used today's searches and your full scan. Pro removes the cap, or they reset at midnight.
+            </div>
+          )}
+
+          {err && <div className="alert"><span aria-hidden="true">⚠</span><span>{err}</span></div>}
+          {scanning && <div className="blank">Checking {candidates.length} {leagueName} game{candidates.length === 1 ? "" : "s"} for prop markets…</div>}
+
+          {results?.rows.map((r,i) => (
+            <div className="game" key={i} style={{padding:"15px 17px"}}>
+              <div className="row-meta" style={{marginBottom:8}}>{r.matchup}</div>
+              <PropMarket event={r.event} marketKey={r.marketKey} marketLabel={r.label}
+                playerFilter={r.playerFilter}
+                onAddLeg={onAddLeg} parlayPickedSet={parlayPickedSet} />
+            </div>
+          ))}
+
+          {diag.length > 0 && (
+            <details className="game" style={{padding:"0 17px", marginTop:14}}>
+              <summary style={{padding:"12px 0", cursor:"pointer", fontSize:12,
+                               fontWeight:600, color:"var(--slate)"}}>
+                Scan detail — what each game returned
+              </summary>
+              <div style={{paddingBottom:16}}>
+                {diag.map((d,i) => (
+                  <div className="cmp" key={i}>
+                    <span style={{color: d.ok ? "var(--ink)" : "var(--rust)"}}>{d.matchup}</span>
+                    <span className="implied">{d.note}</span>
+                  </div>
+                ))}
+                <p className="fine">
+                  Markets requested: {picked.map(labelFor).join(", ") || "none"}. If a game says a
+                  market isn't posted, that book simply isn't offering it yet — props usually appear
+                  closer to game time.
+                </p>
+              </div>
+            </details>
+          )}
+        </React.Fragment>
+      )}
+
+      <div className="prose-card" style={{marginTop:18}}>
+        <h3>On performance stats</h3>
+        <p className="small">
+          Stackd doesn't carry player statistics — season averages, recent form, matchup splits.
+          The odds feed powering this app is a pricing feed, not a stats feed, so any numbers we
+          showed here would be invented rather than sourced, and inventing stats you'd bet on is
+          the last thing this tool should do. Adding real ones means wiring in a dedicated stats
+          provider, which is a good next build once the caching backend is in.
+        </p>
+        <p className="small">
+          What the prices above <em>do</em> tell you is the market's own estimate: an Over at
+          −110 implies roughly a 52% chance. That's the books' collective read on the same
+          question a stat line would help you answer.
+        </p>
+      </div>
+    </React.Fragment>
+  );
+}
+
+/* ---------------- dashboard ---------------- */
+function legState(result){
+  const map = {
+    win:  { c:"var(--mint)", t:"Won" },
+    loss: { c:"var(--rust)", t:"Lost" },
+    push: { c:"var(--gold)", t:"Push" },
+    pending: { c:"var(--slate-lo)", t:"Open" },
+  };
+  const r = map[result] || map.pending;
+  return <span style={{fontSize:10, fontWeight:800, letterSpacing:".1em", textTransform:"uppercase", color:r.c}}>{r.t}</span>;
+}
+
+function Dashboard({ account, onResolve, onCheckResults, checking }){
+  const [period, setPeriod] = useState("week");
+
+  // Average CLV across every leg that has both a locked and a closing price.
+  // Must sit above the early return — hooks have to run in the same order every render.
+  const avgCLV = useMemo(() => {
+    const vals = [];
+    for(const e of account.ledger){
+      for(const l of (e.legs || [])){
+        const v = clvPercent(l.originalPrice, l.closePrice);
+        if(v != null && isFinite(v)) vals.push(v);
+      }
+    }
+    return vals.length ? vals.reduce((a,b) => a+b, 0) / vals.length : null;
+  }, [account.ledger]);
+
+  if(!account.signedIn){
+    return (
+      <React.Fragment>
+        <div className="page-head">
+          <p className="eyebrow">Your record</p>
+          <h1 className="page-title">Track what<br/>you actually did</h1>
+          <p className="page-lede">
+            Sign in to keep a private record of every pick — the price you locked, the best and worst
+            it hit afterward, and your running P/L.
+          </p>
+        </div>
+        <div className="blank">Sign in from the top of the page to start tracking.</div>
+      </React.Fragment>
+    );
+  }
+
+  const pending = account.ledger.filter(e => e.status === "pending");
+  const settled = account.ledger.filter(e => e.status !== "pending");
+  const netAll = settled.reduce((s,e) => s + betPL(e), 0);
+  const wins = settled.filter(e => e.status === "won").length;
+  const losses = settled.filter(e => e.status === "lost").length;
+
+  const ap = PERIODS.find(p => p.key === period);
+  const inPeriod = ap.days === null ? settled
+    : settled.filter(e => (Date.now() - new Date(e.timestamp).getTime()) <= ap.days * 86400000);
+  const pNet = inPeriod.reduce((s,e) => s + betPL(e), 0);
+  const pW = inPeriod.filter(e => e.status === "won").length;
+  const pL = inPeriod.filter(e => e.status === "lost").length;
+
+  return (
+    <React.Fragment>
+      <div className="page-head">
+        <p className="eyebrow">Your record</p>
+        <h1 className="page-title">Performance</h1>
+        <p className="page-lede">
+          Every pick you've saved, graded from final scores where we can get them, with the odds
+          movement you either caught or missed.
+        </p>
+      </div>
+
+      <div className="rowbar">
+        <h2 className="section-h" style={{margin:0}}>All time</h2>
+        <button className="btn" onClick={onCheckResults} disabled={checking || pending.length === 0}>
+          {checking ? "Checking scores…" : "Check results"}
+        </button>
+      </div>
+
+      <dl className="stats">
+        <div className="stat">
+          <dt>Net</dt>
+          <dd className={netAll >= 0 ? "pos" : "neg"}>{netAll >= 0 ? "+" : "−"}{Math.abs(netAll).toFixed(2)}</dd>
+        </div>
+        <div className="stat">
+          <dt>Record</dt>
+          <dd>{wins}–{losses}</dd>
+        </div>
+        <div className="stat">
+          <dt>Open picks</dt>
+          <dd>{pending.length}</dd>
+        </div>
+        <div className="stat">
+          <dt>Avg closing line value</dt>
+          {account.isPro ? (
+            <dd className={avgCLV == null ? "" : avgCLV >= 0 ? "pos" : "neg"}>
+              {avgCLV == null ? "—" : `${avgCLV >= 0 ? "+" : "−"}${Math.abs(avgCLV).toFixed(1)}%`}
+            </dd>
+          ) : (
+            <dd style={{fontSize:14, color:"var(--slate-lo)", letterSpacing:0, lineHeight:1.4}}>
+              Pro
+            </dd>
+          )}
+        </div>
+      </dl>
+      {account.isPro && avgCLV != null && (
+        <p className="note" style={{marginTop:-14}}>
+          {avgCLV >= 0
+            ? "You're beating the closing line on average — the sign that picks are landing ahead of the market, not behind it."
+            : "You're closing behind the market on average. Getting in earlier, or shopping harder before you lock, is usually where this turns around."}
+        </p>
+      )}
+
+      <div className="rowbar">
+        <div className="seg" role="group" aria-label="Time period">
+          {PERIODS.map(p => (
+            <button key={p.key} aria-pressed={period === p.key} onClick={() => setPeriod(p.key)}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <button className="btn"
+          onClick={() => exportLedgerCSV(account.ledger, account.username)}
+          disabled={account.ledger.length === 0}
+          title="Download your full ledger">
+          Export CSV
+        </button>
+      </div>
+
+      <dl className="stats">
+        <div className="stat">
+          <dt>{ap.label} net</dt>
+          <dd className={pNet >= 0 ? "pos" : "neg"}>{pNet >= 0 ? "+" : "−"}{Math.abs(pNet).toFixed(2)}</dd>
+        </div>
+        <div className="stat">
+          <dt>{ap.label} record</dt>
+          <dd>{pW}–{pL}</dd>
+        </div>
+      </dl>
+
+      {account.ledger.length === 0 && (
+        <div className="blank">
+          Nothing saved yet. Build a slip on the board, then save the best price to start a record.
+        </div>
+      )}
+
+      {pending.length > 0 && (
+        <React.Fragment>
+          <h2 className="section-h">Open</h2>
+          {pending.map(e => <BetCard key={e.id} entry={e} onResolve={onResolve} isPro={account.isPro} />)}
+        </React.Fragment>
+      )}
+      {settled.length > 0 && (
+        <React.Fragment>
+          <h2 className="section-h">Settled</h2>
+          {settled.map(e => <BetCard key={e.id} entry={e} onResolve={onResolve} isPro={account.isPro} />)}
+        </React.Fragment>
+      )}
+    </React.Fragment>
+  );
+}
+
+function BetCard({ entry, onResolve, isPro }){
+  return (
+    <article className="bet">
+      <div className="bet-top">
+        <div>
+          <span className="bet-book">{entry.book}</span>{" "}
+          <span className="bet-odds">{entry.americanOdds}</span>{" "}
+          {entry.boostPct > 0 && <span className="bet-boost">+{entry.boostPct}% boost</span>}
+        </div>
+        <span className="state" data-s={entry.status}>{entry.status === "pending" ? "Open" : entry.status}</span>
+      </div>
+
+      <div className="bet-legs">
+        {entry.legs.map((l,i) => (
+          <div key={i}>{l.matchup}: {l.label} <em>{l.pickedBookTitle}</em></div>
+        ))}
+      </div>
+
+      <div className="bet-money">
+        <span>${entry.stake.toFixed(2)} → ${entry.payout.toFixed(2)}</span>
+        <BetDetail entry={entry} isPro={isPro} />
+      </div>
+
+      {entry.status === "pending" && (
+        <div className="settle">
+          <button className="w" onClick={() => onResolve(entry.id, "won")}>Mark won</button>
+          <button onClick={() => onResolve(entry.id, "push")}>Mark push</button>
+          <button className="l" onClick={() => onResolve(entry.id, "lost")}>Mark lost</button>
+        </div>
+      )}
+    </article>
+  );
+}
+
+function BetDetail({ entry, isPro }){
+  const [open, setOpen] = useState(false);
+  return (
+    <React.Fragment>
+      <button className="linkish" onClick={() => setOpen(o => !o)} aria-expanded={open}>
+        {open ? "Hide breakdown" : "Show breakdown"}
+      </button>
+      {open && (
+        <div className="detail" style={{flexBasis:"100%"}}>
+          {entry.bookComparison?.length > 0 && (
+            <React.Fragment>
+              <div className="market-h">What each book was paying</div>
+              <div style={{marginBottom:15}}>
+                {entry.bookComparison.map((b,i) => (
+                  <div className="cmp" key={i}>
+                    <span>
+                      <b>{b.title}</b>
+                      {b.picked && <span className="pick">Took it</span>}
+                    </span>
+                    {b.complete
+                      ? <span style={{fontFamily:"var(--data)", color: b.picked ? "var(--flare)" : "var(--ink)"}}>
+                          {b.americanOdds}
+                        </span>
+                      : <span style={{fontSize:11.5, color:"var(--gold)"}}>
+                          no price for {(b.missing || []).join(", ")}
+                        </span>}
+                  </div>
+                ))}
+              </div>
+            </React.Fragment>
+          )}
+
+          <div className="market-h">Where each leg moved</div>
+          <div className="tablewrap">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Leg</th><th scope="col">Result</th>
+                  <th scope="col">Locked</th><th scope="col">Peak</th>
+                  <th scope="col">Low</th><th scope="col">Close</th><th scope="col">CLV</th>
+                </tr>
+              </thead>
+              <tbody>
+                {entry.legs.map((l,i) => (
+                  <tr key={i}>
+                    <td style={{fontSize:12.5}}>{l.label}</td>
+                    <td>{legState(l.result)}</td>
+                    <td style={{fontFamily:"var(--data)", fontSize:12.5}}>
+                      {l.originalPrice != null ? fmtAmerican(l.originalPrice) : "—"}
+                    </td>
+                    <td style={{fontFamily:"var(--data)", fontSize:12.5, color:"var(--mint)"}}>
+                      {l.peakPrice != null ? fmtAmerican(l.peakPrice) : "—"}
+                    </td>
+                    <td style={{fontFamily:"var(--data)", fontSize:12.5, color:"var(--rust)"}}>
+                      {l.lowPrice != null ? fmtAmerican(l.lowPrice) : "—"}
+                    </td>
+                    <td style={{fontFamily:"var(--data)", fontSize:12.5}}>
+                      {l.closePrice != null ? fmtAmerican(l.closePrice) : "—"}
+                    </td>
+                    <td style={{fontFamily:"var(--data)", fontSize:12.5}}>
+                      {(() => {
+                        if(!isPro) return <span style={{color:"var(--slate-lo)", fontSize:11}}>Pro</span>;
+                        const v = clvPercent(l.originalPrice, l.closePrice);
+                        if(v == null) return "—";
+                        return <span style={{color: v >= 0 ? "var(--mint)" : "var(--rust)"}}>
+                          {v >= 0 ? "+" : "−"}{Math.abs(v).toFixed(1)}%
+                        </span>;
+                      })()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="fine">
+            Peak and low are sampled while the pick is open and that league is on your board. Close is
+            the last price seen before kickoff, so CLV is a strong read on your timing rather than an
+            exact figure.
+          </p>
+        </div>
+      )}
+    </React.Fragment>
+  );
+}
+
+/* ---------------- pricing ----------------
+   The checkout call hits a server function holding the Stripe SECRET key.
+   It can't live here — anything in this file is visible to every visitor.
+   Deploy stripe-create-checkout as a Supabase Edge Function, then set this URL.
+   profiles.plan is written only by the Stripe webhook; the browser can't grant
+   itself Pro (column grants in migration 2 enforce that). */
+const CHECKOUT_ENDPOINT = "";
+
+function PricingPage({ account, onSignIn }){
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  const upgrade = async () => {
+    if(!account.signedIn){ onSignIn(); return; }
+    if(!CHECKOUT_ENDPOINT){
+      setMsg("Checkout isn't connected yet — CHECKOUT_ENDPOINT is still empty in the code.");
+      return;
+    }
+    setBusy(true); setMsg("");
+    try{
+      const { data:{ session } } = await sb.auth.getSession();
+      const res = await fetch(CHECKOUT_ENDPOINT, {
+        method:"POST",
+        headers:{ "Content-Type":"application/json", Authorization:`Bearer ${session.access_token}` },
+        body: JSON.stringify({ returnUrl: window.location.href }),
+      });
+      const json = await res.json();
+      if(json.url) window.location.href = json.url;
+      else setMsg(json.error || "Checkout didn't start. Try again.");
+    }catch(e){
+      setMsg(e.message);
+    }finally{
+      setBusy(false);
+    }
+  };
+
+  return (
+    <React.Fragment>
+      <div className="page-head">
+        <p className="eyebrow">Plans</p>
+        <h1 className="page-title">Start free.<br/>Upgrade when it pays for itself.</h1>
+        <p className="page-lede">
+          One better price on one parlay usually covers the month. Everything on the free plan stays
+          free — Pro adds props, exports, and takes the ads away.
+        </p>
+      </div>
+
+      <div className="tiers">
+        <div className="tier-card">
+          <h3>Free</h3>
+          <div className="cost">$0<small>/mo</small></div>
+          <ul>
+            <li>Every book, every game, unlimited</li>
+            <li>Moneyline, spread and total comparison</li>
+            <li>Parlay priced at each book you picked</li>
+            <li>Promo boost math</li>
+            <li>Pick history, P/L and CSV export</li>
+            <li>5 prop loads a day</li>
+            <li data-off="true">Closing line value</li>
+            <li data-off="true">Unlimited props</li>
+          </ul>
+          <button className="btn" disabled>
+            {account.isPro ? "Manage in billing portal" : "Your plan"}
+          </button>
+        </div>
+
+        <div className="tier-card" data-featured="true">
+          <span className="ribbon">Most useful</span>
+          <h3>Pro</h3>
+          <div className="cost">${PRO_PRICE}<small>/mo</small></div>
+          <ul>
+            <li>Everything in Free</li>
+            <li><b>Closing line value on every pick</b> — whether you beat the number the market settled on</li>
+            <li>Unlimited player and game props</li>
+            <li>Peak, low and closing price per leg</li>
+            <li>Priority refresh once the cache backend ships</li>
+          </ul>
+          <button className="btn btn-flare" onClick={upgrade} disabled={busy || account.isPro}>
+            {account.isPro ? "You're on Pro" : busy ? "Opening checkout…" : `Upgrade — $${PRO_PRICE}/mo`}
+          </button>
+        </div>
+      </div>
+
+      <div className="prose-card" style={{marginTop:22}}>
+        <h3>Why closing line value is the one worth paying for</h3>
+        <p>
+          Win-loss tells you what happened. It takes hundreds of bets before it tells you whether you're
+          any good, because short runs are mostly luck.
+        </p>
+        <p>
+          Closing line value skips the wait. If you took <span className="hl">+150</span> and the line
+          closed at <span className="hl">+120</span>, you got a better number than the market landed on —
+          and that shows up long before your record does. Beat the close consistently and the results
+          follow. Stackd records the closing price on every leg you save and scores it for you.
+        </p>
+      </div>
+
+      {msg && <p className="note" style={{marginTop:16}}>{msg}</p>}
+    </React.Fragment>
+  );
+}
+
+/* ---------------- how it works ---------------- */
+function InfoPage(){
+  return (
+    <React.Fragment>
+      <div className="page-head">
+        <p className="eyebrow">How it works</p>
+        <h1 className="page-title">The biggest promo<br/>is not the best price.</h1>
+        <p className="page-lede">
+          Books compete on odds and on promos, and those two things often point opposite directions. A
+          30% boost on a bad number still pays less than a clean number somewhere else. Stackd does that
+          comparison in one place so you stop opening five apps to find out.
+        </p>
+      </div>
+
+      <div className="prose-card">
+        <h3>What it actually does</h3>
+        <p>
+          You already know which promos <span className="hl">you personally</span> have on each app
+          today — and that never shows up in a public odds feed. Stackd brings the other half: what
+          every book is paying right now, on the same pick, side by side.
+        </p>
+        <p>
+          Put those together and the winner is often the book with no promo at all. That's the whole
+          point of the tool.
+        </p>
+      </div>
+
+      <div className="prose-card">
+        <h3>Using it</h3>
+        <ol className="flow">
+          <li>The board opens on the best moneyline price for each side. Open a game for every book, plus spreads, totals and props.</li>
+          <li>Tap the numbers you want, at whichever book you want. The price and the book both get remembered.</li>
+          <li>The compare tray prices your full slip at each book you picked from.</li>
+          <li>Enter the boost each book is offering you today. The returns update and the real winner shows itself.</li>
+          <li>Save the best price to your ledger to track how it turns out.</li>
+        </ol>
+      </div>
+
+      <div className="prose-card">
+        <h3>The part other trackers skip</h3>
+        <p>
+          Every saved pick stores three prices per leg: what you <span className="hl">locked in</span>,
+          the <span className="hl">peak</span> it reached afterward, and the <span className="hl">low</span>.
+          So you learn whether you got a good number or watched a better one go by — which is the only
+          way to get better at timing.
+        </p>
+        <p>
+          Results grade themselves from final scores where the feed has them. You can settle anything
+          manually, and props always need a manual settle.
+        </p>
+      </div>
+
+      <div className="prose-card">
+        <h3>Books and your state</h3>
+        <p>
+          The board shows every book by default. Set your state in Settings and it narrows to books
+          operating there, so you're not comparing against a price you can't take.
+        </p>
+        <p className="small">
+          State availability is approximate and changes often. Odds come from a third-party feed and can
+          lag a book's own app. Treat every number here as a strong signal, not a guarantee — and confirm
+          at the book before you bet.
+        </p>
+      </div>
+    </React.Fragment>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

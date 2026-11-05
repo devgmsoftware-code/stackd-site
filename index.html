@@ -10,7 +10,7 @@
      tag so it never appears in a browser tab or a shared link preview, but
      still readable from view-source to confirm which build is live without
      signing in. The Diagnostics panel shows the same value. -->
-<meta name="app-version" content="2.2" />
+<meta name="app-version" content="2.3" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23101A33'/%3E%3Crect x='7' y='20' width='9' height='4' rx='1.4' fill='%23FFFFFF' opacity='.45'/%3E%3Crect x='7' y='14' width='14' height='4' rx='1.4' fill='%23FFFFFF' opacity='.7'/%3E%3Crect x='7' y='8' width='19' height='4' rx='1.4' fill='%23FF5A45'/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -379,6 +379,21 @@
   .refbanner-x{
     background:none; border:0; cursor:pointer; font-size:18px; line-height:1;
     color:var(--slate); padding:2px 4px;
+  }
+
+  .danger{
+    margin:18px 0 4px; padding:14px 15px 15px;
+    border:1px solid color-mix(in srgb, var(--rust) 30%, var(--line));
+    border-radius:var(--r-card); background:var(--tint-rust);
+  }
+  .btn-danger{
+    background:var(--rust); border-color:var(--rust); color:#fff; font-weight:600;
+  }
+  .btn-danger:disabled{ opacity:.5; }
+  .danger input{
+    width:100%; padding:9px 10px; border:1px solid var(--line);
+    border-radius:var(--r-ctl); font-family:var(--data); font-size:13px;
+    letter-spacing:.08em; background:var(--card);
   }
 
   .reflink{ display:flex; gap:8px; align-items:center; }
@@ -1337,6 +1352,93 @@ function ReferralPanel({ account }){
         Referring yourself doesn't work, and a month is reversed if the
         payment behind it is refunded or charged back.
       </p>
+    </div>
+  );
+}
+
+
+/* Account deletion.
+
+   Deliberately plain about what goes and what doesn't: a deletion screen that
+   overstates itself is a lie people only discover later. Stripe keeps payment
+   records because both of us have to for tax, and the privacy policy says so
+   in the same words.
+
+   The typed confirmation is checked here and again server-side. */
+function DangerZone({ account }){
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const run = async () => {
+    setBusy(true); setErr("");
+    try{
+      const { data:{ session } } = await sb.auth.getSession();
+      if(!session) throw new Error("Please sign in again.");
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/delete-account`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ confirm: "DELETE" }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if(!res.ok || !body.ok) throw new Error(body.error || "Could not delete the account.");
+      /* The account is gone, so the session is meaningless. Sign out and
+         reload rather than leaving a dead token in a live page. */
+      await sb.auth.signOut().catch(() => {});
+      window.location.href = "/";
+    }catch(e){
+      setErr(e.message); setBusy(false);
+    }
+  };
+
+  return (
+    <div className="danger">
+      <div className="devsec" style={{marginTop:0, borderTop:0, paddingTop:0}}>Delete account</div>
+
+      {!open ? (
+        <React.Fragment>
+          <p className="fine" style={{margin:"0 0 12px"}}>
+            Permanently deletes your account, your picks and your settings.
+          </p>
+          <button className="btn btn-danger" onClick={() => setOpen(true)}>
+            Delete my account
+          </button>
+        </React.Fragment>
+      ) : (
+        <React.Fragment>
+          <p className="fine" style={{margin:"0 0 8px"}}><b>This cannot be undone.</b></p>
+          <ul className="plain fine" style={{margin:"0 0 10px"}}>
+            <li>Your account, picks, performance history and settings are deleted.</li>
+            {account.isPro && <li>Your subscription is cancelled immediately — you won't be billed again, and the rest of the period you've paid for is not refunded.</li>}
+            <li>Unused referral months are lost, and anyone you referred keeps their account.</li>
+            <li>Stripe keeps payment records, which we both have to retain for tax. They contain no card numbers.</li>
+          </ul>
+
+          {err && <div className="msg msg-err" style={{margin:"0 0 10px"}}>{err}</div>}
+
+          <label className="fine" htmlFor="del-confirm" style={{display:"block", marginBottom:6}}>
+            Type <b>DELETE</b> to confirm
+          </label>
+          <input id="del-confirm" type="text" value={typed}
+            name="confirm-delete" autoComplete="off" autoCorrect="off"
+            autoCapitalize="characters" spellCheck="false"
+            onChange={e => setTyped(e.target.value)} />
+
+          <div style={{display:"flex", gap:10, marginTop:12, flexWrap:"wrap"}}>
+            <button className="btn btn-danger" disabled={typed !== "DELETE" || busy} onClick={run}>
+              {busy ? "Deleting…" : "Permanently delete"}
+            </button>
+            <button className="linkish" onClick={() => { setOpen(false); setTyped(""); setErr(""); }}>
+              Keep my account
+            </button>
+          </div>
+        </React.Fragment>
+      )}
     </div>
   );
 }
@@ -2536,6 +2638,8 @@ function SettingsPopover({ account, sports }){
         <ReferralPanel account={account} />
 
         {account.isDev && <DevPanel account={account} />}
+
+        <DangerZone account={account} />
 
         <div className="sheet-actions">
           <button className="btn btn-solid" onClick={save} disabled={busy}>

@@ -119,6 +119,12 @@ function corsHeaders(request, env) {
   return {
     "Access-Control-Allow-Origin": allow,
     "Vary": "Origin",
+    /* Authorization is not a CORS-safelisted request header, so sending it
+       turns every per-game odds call into a preflighted request. Without
+       naming it here the browser refuses to send the header at all and the
+       request never reaches this Worker - which looks exactly like the API
+       being down, while the board keeps working because it sends no header. */
+    "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-client-info, accept",
     // The app reads these; cross-origin reads of a custom header need it named
     // here or the browser hides it.
     "Access-Control-Expose-Headers":

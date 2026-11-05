@@ -10,7 +10,7 @@
      tag so it never appears in a browser tab or a shared link preview, but
      still readable from view-source to confirm which build is live without
      signing in. The Diagnostics panel shows the same value. -->
-<meta name="app-version" content="2.1" />
+<meta name="app-version" content="2.2" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23101A33'/%3E%3Crect x='7' y='20' width='9' height='4' rx='1.4' fill='%23FFFFFF' opacity='.45'/%3E%3Crect x='7' y='14' width='14' height='4' rx='1.4' fill='%23FFFFFF' opacity='.7'/%3E%3Crect x='7' y='8' width='19' height='4' rx='1.4' fill='%23FF5A45'/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1075,9 +1075,30 @@ const ODDS_BASE = "https://api.stackdpicks.com";
    and was wrong whenever credits simply ran out. The body carries the real
    reason, and x-requests-remaining says whether there's any quota left, so
    read those instead of guessing. */
+/* Per-game odds and scores cost credits per game rather than once per
+   league, so the proxy requires a signed-in caller and counts the request
+   against their daily allowance. The board and the schedule stay anonymous,
+   so a visitor can still see prices before making an account. */
+async function fetchOdds(path){
+  const headers = { "Accept": "application/json" };
+  try{
+    const { data:{ session } } = await sb.auth.getSession();
+    if(session?.access_token) headers.Authorization = `Bearer ${session.access_token}`;
+  }catch{ /* signed out; the proxy will say so */ }
+  return fetch(`${ODDS_BASE}${path}`, { headers });
+}
+
 async function apiError(res){
   let body = null;
   try { body = await res.json(); } catch(_) { /* non-JSON error */ }
+
+  /* The proxy refuses unauthenticated or over-limit requests itself, and its
+     message is one the reader can act on - unlike an upstream credit
+     problem, which is ours. Pass those straight through. */
+  if(body && (body.code === "auth_required" || body.code === "over_limit")){
+    return body.error;
+  }
+
   const code = (body && (body.error_code || body.errorCode)) || "";
   const msg  = (body && body.message) || "";
   const left = Number(res.headers.get("x-requests-remaining"));
@@ -2842,7 +2863,7 @@ function App(){
     const scoresBySport = {};
     for(const sk of sportKeys){
       try{
-        const res = await fetch(`${ODDS_BASE}/v4/sports/${sk}/scores/?daysFrom=3`);
+        const res = await fetchOdds(`/v4/sports/${sk}/scores/?daysFrom=3`);
         if(res.ok){
           const data = await res.json();
           scoresBySport[sk] = {};
@@ -3345,8 +3366,8 @@ function PropsSection({ game, account, homeState, onAddLeg, parlayPickedSet, onP
     if(outOfQuota){ return; }
     setLoading(true); setErr(""); setSelected(marketKey);
     try{
-      const res = await fetch(
-        `${ODDS_BASE}/v4/sports/${game.sport_key}/events/${game.id}/odds/` +
+      const res = await fetchOdds(
+        `/v4/sports/${game.sport_key}/events/${game.id}/odds/` +
         `?regions=us,us2&markets=${marketKey}&oddsFormat=american`);
       if(!res.ok) throw new Error(await apiError(res));
       const data = await res.json();
@@ -3762,8 +3783,8 @@ function PlayerSearch({ account, sports, sportKey, onPickSport, homeState,
         const matchup = `${g.away_team} @ ${g.home_team}`;
         let res;
         try{
-          res = await fetch(
-            `${ODDS_BASE}/v4/sports/${sportKey}/events/${g.id}/odds/` +
+          res = await fetchOdds(
+            `/v4/sports/${sportKey}/events/${g.id}/odds/` +
             `?regions=us,us2&markets=${marketParam}&oddsFormat=american`);
         }catch(netErr){
           log.push({ matchup, ok:false, note:`couldn't reach the API — ${netErr.message}` });

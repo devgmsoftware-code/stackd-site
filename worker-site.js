@@ -191,18 +191,18 @@ function kickoffText(iso) {
 function layout(opts) {
   var canonical = "https://stackdpicks.com" + opts.path;
   var out = [];
-  out.push("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">");
-  out.push("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
+  out.push("<!doctype html><html lang='en'><head><meta charset='utf-8'>");
+  out.push("<meta name='viewport' content='width=device-width, initial-scale=1'>");
   out.push("<title>" + esc(opts.title) + "</title>");
-  out.push("<meta name=\"description\" content=\"" + esc(opts.description) + "\">");
-  out.push("<link rel=\"canonical\" href=\"" + esc(canonical) + "\">");
-  if (opts.noindex) out.push("<meta name=\"robots\" content=\"noindex,follow\">");
-  out.push("<meta property=\"og:title\" content=\"" + esc(opts.title) + "\">");
-  out.push("<meta property=\"og:description\" content=\"" + esc(opts.description) + "\">");
-  out.push("<meta property=\"og:url\" content=\"" + esc(canonical) + "\">");
-  out.push("<meta property=\"og:type\" content=\"website\">");
+  out.push("<meta name='description' content='" + esc(opts.description) + "'>");
+  out.push("<link rel='canonical' href='" + esc(canonical) + "'>");
+  if (opts.noindex) out.push("<meta name='robots' content='noindex,follow'>");
+  out.push("<meta property='og:title' content='" + esc(opts.title) + "'>");
+  out.push("<meta property='og:description' content='" + esc(opts.description) + "'>");
+  out.push("<meta property='og:url' content='" + esc(canonical) + "'>");
+  out.push("<meta property='og:type' content='website'>");
   if (opts.jsonld) {
-    out.push("<script type=\"application/ld+json\">" + JSON.stringify(opts.jsonld) + "<\/script>");
+    out.push("<script type='application/ld+json'>" + JSON.stringify(opts.jsonld) + "<\/script>");
   }
   out.push("<style>");
   out.push(":root{--ink:#101A33;--slate:#5C6B85;--line:#DDE3ED;--paper:#F4F6FA;--flare:#FF5A45;--card:#fff}");
@@ -230,14 +230,14 @@ function layout(opts) {
   out.push("footer{margin-top:40px;padding-top:18px;border-top:1px solid var(--line);");
   out.push("color:var(--slate);font-size:12.5px}");
   out.push("</style></head><body>");
-  out.push("<header><div class=\"wrap\"><a href=\"/\">STACK<span>D</span></a></div></header>");
-  out.push("<div class=\"wrap\">");
+  out.push("<header><div class='wrap'><a href='/'>STACK<span>D</span></a></div></header>");
+  out.push("<div class='wrap'>");
   out.push(opts.body);
   out.push("<footer><p><strong>Stackd compares prices. It never takes wagers.</strong> ");
   out.push("Odds come from a third-party feed and can lag a book's own app — confirm at the ");
   out.push("sportsbook before betting. Not affiliated with any sportsbook.</p>");
   out.push("<p><strong>21+</strong>. If gambling stops being fun, call 1-800-GAMBLER. ");
-  out.push("<a href=\"/privacy\">Privacy</a> · <a href=\"/terms\">Terms</a></p></footer>");
+  out.push("<a href='/privacy'>Privacy</a> · <a href='/terms'>Terms</a></p></footer>");
   out.push("</div></body></html>");
   return out.join("");
 }
@@ -286,7 +286,7 @@ function gamePage(sport, game, updatedISO) {
 
   var body = [];
   body.push("<h1>" + esc(matchup) + " odds</h1>");
-  body.push("<p class=\"sub\">Moneyline compared across " + rows.length +
+  body.push("<p class='sub'>Moneyline compared across " + rows.length +
             " sportsbook" + (rows.length === 1 ? "" : "s") +
             (kickoff ? ". " + esc(kickoff) : "") + ".</p>");
 
@@ -309,22 +309,22 @@ function gamePage(sport, game, updatedISO) {
     }
 
     body.push("<table><thead><tr><th>Sportsbook</th>");
-    body.push("<th class=\"num\">" + esc(game.away_team) + "</th>");
-    body.push("<th class=\"num\">" + esc(game.home_team) + "</th></tr></thead><tbody>");
+    body.push("<th class='num'>" + esc(game.away_team) + "</th>");
+    body.push("<th class='num'>" + esc(game.home_team) + "</th></tr></thead><tbody>");
     for (var r = 0; r < rows.length; r++) {
       var row = rows[r];
       body.push("<tr><td>" + esc(row.book) + "</td>");
-      body.push("<td class=\"num" + (row.away !== null && row.away === bestAway ? " best" : "") +
-                "\">" + americanStr(row.away) + "</td>");
-      body.push("<td class=\"num" + (row.home !== null && row.home === bestHome ? " best" : "") +
-                "\">" + americanStr(row.home) + "</td></tr>");
+      body.push("<td class='num" + (row.away !== null && row.away === bestAway ? " best" : "") +
+                "'>" + americanStr(row.away) + "</td>");
+      body.push("<td class='num" + (row.home !== null && row.home === bestHome ? " best" : "") +
+                "'>" + americanStr(row.home) + "</td></tr>");
     }
     body.push("</tbody></table>");
-    body.push("<p style=\"color:var(--slate);font-size:13px;margin-top:10px\">" +
+    body.push("<p style='color:var(--slate);font-size:13px;margin-top:10px'>" +
               "Best price on each side in red. Updated " + esc(updatedISO) + ".</p>");
   }
 
-  body.push("<p><a class=\"cta\" href=\"/\">Compare spreads, totals and props &rarr;</a></p>");
+  body.push("<p><a class='cta' href='/'>Compare spreads, totals and props &rarr;</a></p>");
 
   body.push("<h2>Why the same bet pays differently</h2>");
   body.push("<p>Sportsbooks price independently. They start from similar numbers, " +
@@ -363,7 +363,7 @@ function gamePage(sport, game, updatedISO) {
 function indexPage(sport, games) {
   var body = [];
   body.push("<h1>" + esc(sport.label) + " odds comparison</h1>");
-  body.push("<p class=\"sub\">Every upcoming " + esc(sport.noun) +
+  body.push("<p class='sub'>Every upcoming " + esc(sport.noun) +
             " game, priced at every major sportsbook.</p>");
   if (games.length === 0) {
     body.push("<p>No upcoming games are posted right now. Check back closer to the next slate.</p>");
@@ -371,13 +371,13 @@ function indexPage(sport, games) {
     body.push("<ul>");
     for (var i = 0; i < games.length; i++) {
       var g = games[i];
-      body.push("<li><a href=\"/odds/" + sport.key + "/" + gameSlug(g) + "\">" +
+      body.push("<li><a href='/odds/" + sport.key + "/" + gameSlug(g) + "'>" +
                 esc(g.away_team) + " vs " + esc(g.home_team) + "</a> — " +
                 esc(kickoffText(g.commence_time)) + "</li>");
     }
     body.push("</ul>");
   }
-  body.push("<p><a class=\"cta\" href=\"/\">Open the live board &rarr;</a></p>");
+  body.push("<p><a class='cta' href='/'>Open the live board &rarr;</a></p>");
   return layout({
     path: "/odds/" + sport.key,
     title: sport.label + " odds — compare every sportsbook | Stackd",
@@ -454,8 +454,8 @@ async function handleSeo(url, cache) {
 
 async function sitemap() {
   var out = [];
-  out.push("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
-  out.push("<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">");
+  out.push("<?xml version='1.0' encoding='UTF-8'?>");
+  out.push("<urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'>");
   function add(loc, freq, pri) {
     out.push("<url><loc>https://stackdpicks.com" + loc + "</loc>" +
              "<changefreq>" + freq + "</changefreq>" +
